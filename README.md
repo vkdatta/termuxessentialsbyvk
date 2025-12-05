@@ -24,7 +24,7 @@ A lightweight tool for Termux that lets you:
 
 - **`open`** (alias: **`o`**)  
 
- The “omni-tool” we all hoped for would have made things much easier. It lets you drill into any file or folder and choose from options like view, edit, share, move, rename, delete, and more. It also supports batch editing, deleting, and creating. You can change directories and do anything you’ve ever wished for to make the Termux environment far more powerful.
+  The “omni-tool” we all hoped for would have made things much easier. It lets you drill into any file or folder and choose from options like view, edit, share, move, rename, delete, and more. It also supports batch editing, deleting, and creating. You can change directories and do anything you’ve ever wished for to make the Termux environment far more powerful.
 
  
 - **`xtract`**  
