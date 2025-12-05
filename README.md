@@ -98,6 +98,6 @@ pip install --upgrade --force-reinstall git+https://github.com/vkdatta/termuxess
 
 >  Enter: `example.com/article/p.html` to extract tables/links from that URL only  
 
->  Enter: `example.com/article/100` [if the same URL has multiple pages] to extract tables/links from 100th page only
+>  Enter: `example.com/article/100` [if the same URL has multiple pages] to extract tables/links from the 100th page only.
 
 >  Enter: `example.com/article/{100}` [if the same URL has multiple pages] to extract tables/links from 1st page to 100th page [Observe flower brackets]
