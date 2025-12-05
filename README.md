@@ -1,6 +1,6 @@
 ## termuxessentialsbyvk
 
-A small toolkit for Termux that lets you:  
+A lightweight tool for Termux that lets you:  
 
 - **`copy <filename>`**  
 
@@ -24,8 +24,9 @@ A small toolkit for Termux that lets you:
 
 - **`open`** (alias: **`o`**)  
 
-  The “omni-tool” launcher — drill into any file or folder and pick from view, edit, share, move, rename, delete, etc., all without leaving your prompt.
+ The “omni-tool” we all hoped for would have made things much easier. It lets you drill into any file or folder and choose from options like view, edit, share, move, rename, delete, and more. It also supports batch editing, deleting, and creating. You can change directories and do anything you’ve ever wished for to make the Termux environment far more powerful.
 
+ 
 - **`xtract`**  
 
   Scrape **all** HTML tables and hyperlinks from one or more paginated web pages in a single invocation. Perfect for harvesting catalogues, reports, or any tabular data spread across multiple pages.
