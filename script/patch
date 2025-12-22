@@ -1,5 +1,12 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
+# --- CLI dispatcher ---
+if [ "$1" = "run" ]; then
+    shift
+    run "$@"
+    exit
+fi
+
 handle_file() {
     local file="$1"
     while true; do
