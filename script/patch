@@ -523,22 +523,33 @@ run() {
     local basename_only
     basename_only=$(basename "$input")
     local -a matches
+    local f
+
+    # If patch was invoked as a CLI subcommand, we must exit the process when done.
+    local CLI_MODE=0
+    if [ "${PATCH_CLI_INVOKED:-}" = "1" ]; then
+        CLI_MODE=1
+    fi
+
+    # Find files only under $path (already anchored by dispatcher when run via CLI)
     while IFS= read -r -d $'\0' f; do
         matches+=("$f")
     done < <(find "$path" -type f -iname "$basename_only" -print0 2>/dev/null)
+
     if [ ${#matches[@]} -eq 0 ]; then
         echo "❌ No matches for '$basename_only' inside $path and its subfolders."
-        return 1
+        if [ $CLI_MODE -eq 1 ]; then exit 1; else return 1; fi
     elif [ ${#matches[@]} -eq 1 ]; then
         echo "🔎 Found single match: ${matches[0]}"
         execute_file "${matches[0]}"
-        return $?
+        rc=$?
+        if [ $CLI_MODE -eq 1 ]; then exit $rc; else return $rc; fi
     else
         echo "🔎 Found multiple matches for '$basename_only':"
         local i=0
-        for m in "${matches[@]}"; do
+        for f in "${matches[@]}"; do
             local dir rel_label
-            dir=$(dirname "$m")
+            dir=$(dirname "$f")
             if [ "$dir" = "$path" ]; then
                 rel_label="Home"
             else
@@ -546,23 +557,26 @@ run() {
                 rel_label="${rel_label//\// > }"
             fi
             i=$((i+1))
-            printf "%2d) %s > %s\n" "$i" "$rel_label" "$(basename "$m")"
+            printf "%2d) %s > %s\n" "$i" "$rel_label" "$(basename "$f")"
         done
+
         read -p "Select location number to run (or press Enter to cancel): " sel
         if [ -z "$sel" ]; then
             echo "🚫 Run cancelled"
-            return 1
+            if [ $CLI_MODE -eq 1 ]; then exit 1; else return 1; fi
         fi
+
         if ! [[ "$sel" =~ ^[0-9]+$ ]] || [ "$sel" -lt 1 ] || [ "$sel" -gt "${#matches[@]}" ]; then
             echo "❌ Invalid selection"
-            return 1
+            if [ $CLI_MODE -eq 1 ]; then exit 1; else return 1; fi
         fi
+
         chosen="${matches[$((sel-1))]}"
         echo "▶️ Running: $chosen"
         execute_file "$chosen"
-        exit $?
+        rc=$?
+        if [ $CLI_MODE -eq 1 ]; then exit $rc; else return $rc; fi
     fi
-    exit 0
 }
 
 path=$(pwd)
