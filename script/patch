@@ -1,10 +1,12 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# --- CLI dispatcher ---
-if [ "$1" = "run" ]; then
+# --- CLI dispatcher (fixed) ---
+if [ "${PATCH_CLI_INVOKED:-}" != "1" ] && [ "${1-}" = "run" ]; then
+    export PATCH_CLI_INVOKED=1
+    path="$(pwd)"
     shift
     run "$@"
-    exit
+    exit $?
 fi
 
 handle_file() {
