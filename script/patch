@@ -560,8 +560,9 @@ run() {
         chosen="${matches[$((sel-1))]}"
         echo "▶️ Running: $chosen"
         execute_file "$chosen"
-        return $?
+        exit $?
     fi
+    exit 0
 }
 
 path=$(pwd)
