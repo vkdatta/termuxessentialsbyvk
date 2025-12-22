@@ -1,5 +1,4 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Advanced Smart File Manager with Destination Selection for Copy
 
 handle_file() {
     local file="$1"
@@ -17,11 +16,12 @@ handle_file() {
         echo "8) Back to Previous Menu"
         echo "9) Back to Home/Exit"
         echo "0) Rename File"
-        read -p "Enter choice [1-9]: " action
+        echo "10) Run"
+        read -p "Enter choice [0-10]: " action
 
         case "$action" in
             1)
-                termux-open "$file"
+                force_open "$file"
                 return 1
                 ;;
             2)
@@ -45,7 +45,7 @@ handle_file() {
                 return 1
                 ;;
             7)
-                termux-share "$file"
+                force_share "$file"
                 return 1
                 ;;
             8)
@@ -58,6 +58,10 @@ handle_file() {
                 rename_item "$file"
                 return 1
                 ;;
+            10)
+                run_file "$file"
+                return 1
+                ;;
             *)
                 echo "❌ Invalid option. Try again."
                 ;;
@@ -68,14 +72,13 @@ handle_file() {
 rename_item() {
     local target="$1"
     local dir newname
-
     if [ -d "$target" ]; then
         dir=$(dirname -- "$target")
-        read -p "Enter new folder name for '$(basename "$target")': " newname
+        read -p "📝 Enter new folder name for '$(basename "$target")': " newname
         mv -v "$target" "$dir/$newname"
     elif [ -f "$target" ]; then
         dir=$(dirname -- "$target")
-        read -p "Enter new file name for '$(basename "$target")': " newname
+        read -p "📝 Enter new file name for '$(basename "$target")': " newname
         mv -v "$target" "$dir/$newname"
     else
         echo "❌ Cannot rename: '$target' not found." >&2
@@ -98,7 +101,7 @@ get_abs_path() {
 }
 
 create_files() {
-    read -p "Enter filenames (separated by |): " filelist
+    read -p "➕ Enter filenames (separated by |): " filelist
     IFS='|' read -ra files <<< "$filelist"
     for file in "${files[@]}"; do
         touch "$path/$file"
@@ -107,7 +110,7 @@ create_files() {
 }
 
 create_dirs() {
-    read -p "Enter folder names (separated by |): " dirlist
+    read -p "📂 Enter folder names (separated by |): " dirlist
     IFS='|' read -ra dirs <<< "$dirlist"
     for dir in "${dirs[@]}"; do
         mkdir -p "$path/$dir"
@@ -116,12 +119,9 @@ create_dirs() {
 }
 
 move_items() {
-    # Select items to move
     echo "Select items to move (enter numbers separated by ,)"
     read -p "Item numbers: " itemlist
     IFS=',' read -ra indices <<< "$itemlist"
-    
-    # Collect selected items
     selected_items=()
     for index in "${indices[@]}"; do
         if [[ $index =~ ^[0-9]+$ ]] && [ $index -ge 1 ] && [ $index -le ${#items[@]} ]; then
@@ -130,20 +130,15 @@ move_items() {
             echo "❌ Skipping invalid index: $index"
         fi
     done
-
     if [ ${#selected_items[@]} -eq 0 ]; then
         echo "❌ No valid items selected"
         return
     fi
-
-    # Show selected items
     echo
     echo "📦 Selected items:"
     for item in "${selected_items[@]}"; do
         echo "- $(basename "$item")"
     done
-    
-    # Save current path for destination selection
     original_path="$path"
     path="$HOME"
     move_mode=true
@@ -157,8 +152,6 @@ delete_items() {
     echo "Select items to delete (enter numbers separated by ,)"
     read -p "Item numbers: " itemlist
     IFS=',' read -ra indices <<< "$itemlist"
-    
-    # Collect selected items
     selected_items=()
     for index in "${indices[@]}"; do
         if [[ $index =~ ^[0-9]+$ ]] && [ $index -ge 1 ] && [ $index -le ${#items[@]} ]; then
@@ -167,26 +160,20 @@ delete_items() {
             echo "❌ Skipping invalid index: $index"
         fi
     done
-
     if [ ${#selected_items[@]} -eq 0 ]; then
         echo "❌ No valid items selected"
         return
     fi
-
-    # Show warning
     echo
     echo "⚠️ WARNING: You are about to delete the following items:"
     for item in "${selected_items[@]}"; do
         echo "- $(basename "$item")"
     done
-    
     read -p "Are you sure? This cannot be undone. (y/n): " confirm
     if [[ $confirm != "y" && $confirm != "Y" ]]; then
         echo "🚫 Deletion cancelled"
         return
     fi
-
-    # Perform deletion
     for item in "${selected_items[@]}"; do
         if [ -e "$item" ]; then
             rm -rf -- "$item"
@@ -201,8 +188,6 @@ initiate_copy() {
     echo "Select items to copy (enter numbers separated by ,)"
     read -p "Item numbers: " itemlist
     IFS=',' read -ra indices <<< "$itemlist"
-    
-    # Collect selected items
     selected_items=()
     for index in "${indices[@]}"; do
         if [[ $index =~ ^[0-9]+$ ]] && [ $index -ge 1 ] && [ $index -le ${#items[@]} ]; then
@@ -211,27 +196,73 @@ initiate_copy() {
             echo "❌ Skipping invalid index: $index"
         fi
     done
-
     if [ ${#selected_items[@]} -eq 0 ]; then
         echo "❌ No valid items selected"
         return
     fi
-
-    # Show selected items
     echo
     echo "📦 Selected items to copy:"
     for item in "${selected_items[@]}"; do
         echo "- $(basename "$item")"
     done
-    
-    # Save current path for destination selection
-    original_path="$path"
-    path="$HOME"
-    copy_mode=true
     echo
-    echo "📋 COPY MODE: Navigate to destination folder"
-    echo "Press 'c' at destination to confirm copy"
-    echo "Press 'b' to cancel copy operation"
+    echo "Choose copy target:"
+    echo "1) Local (navigate to destination folder as before)"
+    echo "2) Google Drive via rclone (perform immediate rclone copy)"
+    read -p "Enter choice [1-2]: " copy_choice
+    case "$copy_choice" in
+        1)
+            original_path="$path"
+            path="$HOME"
+            copy_mode=true
+            echo
+            echo "📋 COPY MODE: Navigate to destination folder"
+            echo "Press 'c' at destination to confirm copy"
+            echo "Press 'b' to cancel copy operation"
+            ;;
+        2)
+            read -p "Enter destination folder name on gdrive (simple name -> gdrive:/user/<name>; or full remote path e.g. gdrive:/some/path): " remote_input
+            if [ -z "$remote_input" ]; then
+                echo "🚫 rclone copy cancelled (no destination provided)"
+                selected_items=()
+                return
+            fi
+            if [[ "$remote_input" == gdrive:* ]]; then
+                remote_path="$remote_input"
+            else
+                remote_path="gdrive:/user/$remote_input"
+            fi
+            if ! command -v rclone >/dev/null 2>&1; then
+                echo "❌ rclone not found in PATH. Please install rclone and configure a remote named 'gdrive'."
+                selected_items=()
+                return
+            fi
+            echo
+            echo "📤 Starting rclone copy to: $remote_path"
+            for item in "${selected_items[@]}"; do
+                if [ ! -e "$item" ]; then
+                    echo "❌ Item not found: $(basename "$item")"
+                    continue
+                fi
+                echo
+                echo "➡️ rclone copy: $(basename "$item") -> $remote_path"
+                rclone copy "$item" "$remote_path" --progress --metadata
+                rc=$?
+                if [ $rc -ne 0 ]; then
+                    echo "❌ rclone failed for $(basename "$item") (exit code $rc)"
+                else
+                    echo "✅ rclone succeeded for $(basename "$item")"
+                fi
+            done
+            echo
+            echo "✅ All requested rclone copy operations finished."
+            selected_items=()
+            ;;
+        *)
+            echo "❌ Invalid choice. Cancelled copy."
+            selected_items=()
+            ;;
+    esac
 }
 
 perform_copy() {
@@ -240,21 +271,15 @@ perform_copy() {
             echo "❌ Item not found: $(basename "$item")"
             continue
         fi
-        
         base=$(basename -- "$item")
         name="${base%.*}"
         ext="${base##*.}"
-        
-        # Handle files with no extension
         if [[ "$base" == "$ext" ]]; then
             name="$base"
             ext=""
         fi
-        
         count=1
         newbase="$base"
-        
-        # Generate unique name in destination directory
         while [ -e "$path/$newbase" ]; do
             if [ -n "$ext" ]; then
                 newbase="${name}_${count}.${ext}"
@@ -263,24 +288,263 @@ perform_copy() {
             fi
             count=$((count+1))
         done
-        
-        # Perform copy to destination
         cp -r -- "$item" "$path/$newbase"
         echo "📋 Copied: $(basename "$item") → $newbase"
     done
 }
 
-# Initialize global variables
+determine_shared_dir() {
+    if [ -d "$HOME/storage/shared" ]; then
+        echo "$HOME/storage/shared/Download"
+    else
+        echo "/sdcard/Download"
+    fi
+}
+
+force_open() {
+    local src="$1"
+    if [ ! -e "$src" ]; then
+        echo "❌ File not found: $src"
+        return 1
+    fi
+    local shared_dir
+    shared_dir="$(determine_shared_dir)"
+    mkdir -p "$shared_dir"
+    local base ts dest
+    base=$(basename "$src")
+    ts=$(date +%s)
+    dest="$shared_dir/${ts}_$base"
+    cp -f -- "$src" "$dest" || { echo "❌ Failed to copy to shared storage"; return 1; }
+    if command -v termux-open >/dev/null 2>&1; then
+        termux-open "$dest" && return 0
+    fi
+    if command -v am >/dev/null 2>&1; then
+        local mime
+        if command -v file >/dev/null 2>&1; then
+            mime=$(file --mime-type -b "$dest" 2>/dev/null || echo "application/octet-stream")
+        else
+            mime="application/octet-stream"
+        fi
+        am start -a android.intent.action.VIEW -d "file://$dest" -t "$mime" >/dev/null 2>&1 || echo "⚠️ Open via am failed"
+        return 0
+    fi
+    echo "❌ No suitable open method available"
+    return 1
+}
+
+force_share() {
+    local src="$1"
+    if [ ! -e "$src" ]; then
+        echo "❌ File not found: $src"
+        return 1
+    fi
+    local shared_dir
+    shared_dir="$(determine_shared_dir)"
+    mkdir -p "$shared_dir"
+    local base ts dest
+    base=$(basename "$src")
+    ts=$(date +%s)
+    dest="$shared_dir/${ts}_$base"
+    cp -f -- "$src" "$dest" || { echo "❌ Failed to copy to shared storage"; return 1; }
+    if command -v termux-share >/dev/null 2>&1; then
+        termux-share -a send -c file "$dest" 2>/dev/null || termux-share "$dest"
+        return 0
+    fi
+    if command -v am >/dev/null 2>&1; then
+        local mime
+        if command -v file >/dev/null 2>&1; then
+            mime=$(file --mime-type -b "$dest" 2>/dev/null || echo "application/octet-stream")
+        else
+            mime="application/octet-stream"
+        fi
+        am start -a android.intent.action.SEND -t "$mime" --es android.intent.extra.SUBJECT "$(basename "$dest")" --stream "file://$dest" >/dev/null 2>&1 2>/dev/null || {
+            am start -a android.intent.action.SEND -t "$mime" --es android.intent.extra.STREAM "file://$dest" >/dev/null 2>&1 || echo "⚠️ Share via am failed"
+        }
+        return 0
+    fi
+    echo "❌ No suitable share method available"
+    return 1
+}
+
+run_file() {
+    local file="$1"
+    if [ ! -e "$file" ]; then
+        echo "❌ File not found: $file"
+        return 1
+    fi
+    if [ -x "$file" ]; then
+        read -p "⚙️ File is executable. Run directly? (y/N): " yn
+        if [[ $yn =~ ^[Yy]$ ]]; then
+            "$file"
+            return $?
+        fi
+    fi
+    local firstline interpreter exe
+    firstline=$(head -n1 "$file" 2>/dev/null)
+    if [[ "$firstline" =~ ^\#! ]]; then
+        interpreter=$(echo "$firstline" | cut -c3- | awk '{print $1}')
+        exe=$(basename "$interpreter")
+        if command -v "$exe" >/dev/null 2>&1; then
+            read -p "⚙️ Run with shebang interpreter ($exe)? (y/N): " yn2
+            if [[ $yn2 =~ ^[Yy]$ ]]; then
+                "$exe" "$file"
+                return $?
+            fi
+        fi
+    fi
+    local ext
+    ext="${file##*.}"
+    case "$ext" in
+        py)
+            if command -v python3 >/dev/null 2>&1; then python3 "$file"; elif command -v python >/dev/null 2>&1; then python "$file"; else echo "❌ python not found"; fi
+            ;;
+        pyc)
+            echo "❌ Cannot run .pyc directly in Termux without proper interpreter setup"
+            ;;
+        js|mjs)
+            if command -v node >/dev/null 2>&1; then node "$file"; elif command -v deno >/dev/null 2>&1; then deno run "$file"; else echo "❌ node/deno not found"; fi
+            ;;
+        ts)
+            if command -v deno >/dev/null 2>&1; then deno run "$file"; elif command -v ts-node >/dev/null 2>&1; then ts-node "$file"; else echo "❌ ts-node/deno not found"; fi
+            ;;
+        sh|bash)
+            if command -v bash >/dev/null 2>&1; then bash "$file"; else sh "$file"; fi
+            ;;
+        zsh)
+            if command -v zsh >/dev/null 2>&1; then zsh "$file"; else echo "❌ zsh not found"; fi
+            ;;
+        php)
+            if command -v php >/dev/null 2>&1; then php "$file"; else echo "❌ php not found"; fi
+            ;;
+        pl)
+            if command -v perl >/dev/null 2>&1; then perl "$file"; else echo "❌ perl not found"; fi
+            ;;
+        rb)
+            if command -v ruby >/dev/null 2>&1; then ruby "$file"; else echo "❌ ruby not found"; fi
+            ;;
+        jar)
+            if command -v java >/dev/null 2>&1; then java -jar "$file"; else echo "❌ java not found"; fi
+            ;;
+        class)
+            if command -v java >/dev/null 2>&1; then classname="$(basename "${file%.*}")"; java -cp "$(dirname "$file")" "$classname"; else echo "❌ java not found"; fi
+            ;;
+        java)
+            if command -v javac >/dev/null 2>&1 && command -v java >/dev/null 2>&1; then
+                javac "$file" && classname="$(basename "${file%.*}")" && java -cp "$(dirname "$file")" "$classname"
+            else
+                echo "❌ javac/java not found"
+            fi
+            ;;
+        c)
+            if command -v gcc >/dev/null 2>&1; then
+                tmp="$HOME/tmp_exec_$RANDOM"
+                gcc "$file" -o "$tmp" && "$tmp"
+                rm -f "$tmp"
+            else
+                echo "❌ gcc not found"
+            fi
+            ;;
+        cpp|cc|cxx|c++|c\+\+)
+            if command -v g++ >/dev/null 2>&1; then
+                tmp="$HOME/tmp_exec_$RANDOM"
+                g++ "$file" -o "$tmp" && "$tmp"
+                rm -f "$tmp"
+            else
+                echo "❌ g++ not found"
+            fi
+            ;;
+        go)
+            if command -v go >/dev/null 2>&1; then go run "$file"; else echo "❌ go not found"; fi
+            ;;
+        rs)
+            if command -v rustc >/dev/null 2>&1; then
+                tmp="$HOME/tmp_exec_$RANDOM"
+                rustc "$file" -o "$tmp" && "$tmp"
+                rm -f "$tmp"
+            elif command -v cargo >/dev/null 2>&1; then
+                echo "ℹ️ For cargo projects use cargo run inside the project"
+            else
+                echo "❌ rustc/cargo not found"
+            fi
+            ;;
+        swift)
+            if command -v swift >/dev/null 2>&1; then swift "$file"; elif command -v swiftc >/dev/null 2>&1; then tmp="$HOME/tmp_exec_$RANDOM"; swiftc "$file" -o "$tmp" && "$tmp"; else echo "❌ swift not found"; fi
+            ;;
+        kt|kts|kotlin)
+            if command -v kotlinc >/dev/null 2>&1 && command -v java >/dev/null 2>&1; then
+                out="$HOME/tmp_kt_$RANDOM.jar"
+                kotlinc "$file" -include-runtime -d "$out" && java -jar "$out"
+                rm -f "$out"
+            else
+                echo "❌ kotlinc/java not found"
+            fi
+            ;;
+        r)
+            if command -v Rscript >/dev/null 2>&1; then Rscript "$file"; else echo "❌ Rscript not found"; fi
+            ;;
+        jl)
+            if command -v julia >/dev/null 2>&1; then julia "$file"; else echo "❌ julia not found"; fi
+            ;;
+        lua)
+            if command -v lua >/dev/null 2>&1; then lua "$file"; else echo "❌ lua not found"; fi
+            ;;
+        hs)
+            if command -v runhaskell >/dev/null 2>&1; then runhaskell "$file"; elif command -v ghc >/dev/null 2>&1; then tmp="$HOME/tmp_exec_$RANDOM"; ghc -o "$tmp" "$file" && "$tmp"; else echo "❌ runhaskell/ghc not found"; fi
+            ;;
+        coffee)
+            if command -v coffee >/dev/null 2>&1; then coffee "$file"; else echo "❌ coffee not found"; fi
+            ;;
+        dart)
+            if command -v dart >/dev/null 2>&1; then dart "$file" || dart run "$file"; else echo "❌ dart not found"; fi
+            ;;
+        scala)
+            if command -v scala >/dev/null 2>&1; then scala "$file"; else echo "❌ scala not found"; fi
+            ;;
+        md|markdown)
+            if command -v glow >/dev/null 2>&1; then glow "$file"; elif command -v less >/dev/null 2>&1; then less "$file"; else cat "$file"; fi
+            ;;
+        txt|log|cfg|conf)
+            ${PAGER:-less} "$file"
+            ;;
+        zip|tar|gz|tgz|bz2|xz|7z)
+            echo "📦 Archive file. Use appropriate extraction command (unzip, tar -xvf, 7z x ...) in shell."
+            ;;
+        pdf|epub|mobi|azw3)
+            force_open "$file"
+            ;;
+        png|jpg|jpeg|gif|bmp|webp|svg)
+            force_open "$file"
+            ;;
+        doc|docx|xls|xlsx|ppt|pptx)
+            force_open "$file"
+            ;;
+        *)
+            if command -v file >/dev/null 2>&1; then
+                mimetype=$(file --mime-type -b "$file" 2>/dev/null || echo "")
+            else
+                mimetype=""
+            fi
+            if [ -n "$mimetype" ] && [[ "$mimetype" == text/* ]]; then
+                ${PAGER:-less} "$file"
+            else
+                if command -v termux-open >/dev/null 2>&1; then
+                    force_open "$file"
+                else
+                    echo "❓ Unknown extension and no viewer available"
+                fi
+            fi
+            ;;
+    esac
+}
+
 path=$(pwd)
 move_mode=false
 copy_mode=false
 selected_items=()
 original_path=""
 
-# Handle command-line arguments
 if [ $# -eq 1 ]; then
     target="$1"
-    
     if [ -d "$target" ]; then
         path=$(get_abs_path "$target")
     elif [ -f "$target" ]; then
@@ -288,7 +552,7 @@ if [ $# -eq 1 ]; then
         handle_file "$selected"
         exit $?
     else
-        echo "Error: '$target' not found" >&2
+        echo "❌ Error: '$target' not found" >&2
         exit 1
     fi
 fi
@@ -303,9 +567,7 @@ while true; do
     else
         echo "📂 Location: $path"
     fi
-    
     items=("$path"/*)
-    
     if [ ${#items[@]} -eq 0 ]; then
         echo "🛑 This directory is empty"
     else
@@ -320,7 +582,6 @@ while true; do
             idx=$((idx+1))
         done
     fi
-
     echo
     if $move_mode; then
         echo "c) Confirm   x) Cancel"
@@ -331,20 +592,15 @@ while true; do
         echo "m) Move Items  d) Delete items c) Copy items"
         echo "n) New folders  f) New files  q/h) Quit/Home"
     fi
-    
     read -p "Select item number or command: " choice
 
-    # Handle move mode commands
     if $move_mode; then
         case "$choice" in
             c|C)
-                # Perform the move operation
                 for item in "${selected_items[@]}"; do
                     mv -v "$item" "$path/"
                 done
                 echo "✅ Items moved successfully"
-                
-                # Return to original location
                 move_mode=false
                 path="$original_path"
                 selected_items=()
@@ -360,15 +616,11 @@ while true; do
         esac
     fi
 
-    # Handle copy mode commands
     if $copy_mode; then
         case "$choice" in
             c|C)
-                # Perform the copy operation
                 perform_copy
                 echo "✅ Items copied successfully"
-                
-                # Return to original location
                 copy_mode=false
                 path="$original_path"
                 selected_items=()
@@ -384,7 +636,6 @@ while true; do
         esac
     fi
 
-    # Handle normal mode commands
     case "$choice" in
         q|Q|h|H)
             exit 0
@@ -442,7 +693,6 @@ while true; do
             ;;
     esac
 
-    # Handle numeric selection
     if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#items[@]}" ]; then
         echo "⚠️  Invalid selection" >&2
         continue
