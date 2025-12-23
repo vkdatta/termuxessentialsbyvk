@@ -6,20 +6,24 @@ handle_file() {
         echo
         echo "📄 File selected: $(basename "$file")"
         echo "What would you like to do with the file?"
+        echo "0) Run"
         echo "1) View"
         echo "2) Edit"
         echo "3) Copy Content"
         echo "4) Delete Content"
         echo "5) Erase Content"
         echo "6) Replace With Clipboard Content"
-        echo "7) Share"
-        echo "8) Back to Previous Menu"
-        echo "9) Back to Home/Exit"
-        echo "0) Rename File"
-        echo "10) Run"
-        read -p "Enter choice [0-10]: " action
+        echo "7) Rename File" 
+        echo "8) Share"
+        echo "u) Back to Previous Menu"
+        echo "q/h) Back to Home/Exit"
+        read -p "Enter choice: " action
 
         case "$action" in
+            0)
+                run_file "$file"
+                return 1
+                ;;
             1)
                 force_open "$file"
                 return 1
@@ -45,22 +49,18 @@ handle_file() {
                 return 1
                 ;;
             7)
-                force_share "$file"
-                return 1
-                ;;
-            8)
-                return 1
-                ;;
-            9)
-                exit 0
-                ;;
-            0)
                 rename_item "$file"
                 return 1
                 ;;
-            10)
-                run_file "$file"
+            8)
+                force_share "$file"
                 return 1
+                ;;
+            u|U)
+                return 1
+                ;;
+            q|Q|h|H)
+                exit 0
                 ;;
             *)
                 echo "❌ Invalid option. Try again."
@@ -101,7 +101,7 @@ get_abs_path() {
 }
 
 create_files() {
-    read -p "➕ Enter filenames (separated by |): " filelist
+    read -p "📄 Enter filenames (separated by |): " filelist
     IFS='|' read -ra files <<< "$filelist"
     for file in "${files[@]}"; do
         touch "$path/$file"
