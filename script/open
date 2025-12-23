@@ -592,7 +592,7 @@ while true; do
         echo "m) Move Items  d) Delete items c) Copy items"
         echo "n) New folders  f) New files  q/h) Quit/Home"
     fi
-    read -p "Select item number or command: " choice
+    read -p "Select item number: " choice
 
     if $move_mode; then
         case "$choice" in
