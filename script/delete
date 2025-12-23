@@ -1,4 +1,6 @@
-  if [ -z "$1" ]; then
+#!/usr/bin/env bash
+
+if [ -z "$1" ]; then
     echo "Usage: delete <filename or folder>"
     return 1
   fi
