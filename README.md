@@ -50,6 +50,7 @@ pkg install python-dev
 pkg install ninja
 pkg install libandroid-spawn
 pkg install libffi-dev
+pkg install rclone
 ```
 ```bash
 pip install numpy
@@ -66,6 +67,21 @@ pip install requests pandas beautifulsoup4 tqdm
 ```bash
 pip install openpyxl 
 ```
+
+## Rclone Config
+
+```bash
+rclone config
+```
+
+n → New remote
+Name: gdrive
+Storage: choose Google Drive
+Client ID / Secret: leave empty
+Scope: 1 (full access)
+Root folder: leave empty
+Advanced config: n
+Auto config: y
 
 ## Installation
 
