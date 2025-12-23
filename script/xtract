@@ -33,7 +33,7 @@ def check_dependencies():
 def clean_sheet_name(name):
     """Clean invalid characters from Excel sheet names"""
     name = re.sub(r'[\\/*?:\[\]]', '', name)
-    return name[:31]  # Excel limit is 31 characters
+    return name[:31]
 
 def generate_unique_filename(base_path, format):
     """Generate unique filename to prevent overwriting"""
@@ -60,7 +60,6 @@ def extract_links_from_container(container, link_classes=None):
     """Extract links from a specific container element"""
     links = []
     for a in container.find_all('a', href=True):
-        # Skip empty links
         if not a['href'] or a['href'].startswith(('javascript:', 'mailto:', 'tel:')):
             continue
             
@@ -83,23 +82,19 @@ def extract_links_from_container(container, link_classes=None):
 def manual_table_extraction(table):
     """Robust table extraction that handles various table structures"""
     try:
-        # Extract headers from thead or first row
         headers = []
         header_row = None
         
-        # 1. Look for thead section
         thead = table.find('thead')
         if thead:
             for row in thead.find_all('tr'):
                 for th in row.find_all(['th', 'td']):
                     headers.append(th.get_text(strip=True))
         
-        # 2. If no thead, look for th elements in the table
         if not headers:
             for th in table.find_all('th'):
                 headers.append(th.get_text(strip=True))
         
-        # 3. If still no headers, use first row as headers
         if not headers:
             first_row = table.find('tr')
             if first_row:
@@ -107,12 +102,10 @@ def manual_table_extraction(table):
                 for cell in first_row.find_all(['th', 'td']):
                     headers.append(cell.get_text(strip=True))
         
-        # Extract data rows
         rows = []
-        tbody = table.find('tbody') or table  # Fallback to entire table if no tbody
+        tbody = table.find('tbody') or table
         
         for row in tbody.find_all('tr'):
-            # Skip header row if we identified it
             if row == header_row:
                 continue
                 
@@ -121,7 +114,6 @@ def manual_table_extraction(table):
                 row_data = [col.get_text(strip=True) for col in cols]
                 rows.append(row_data)
         
-        # Find max columns to ensure consistent shape
         max_columns = max(len(row) for row in rows) if rows else 0
         if headers:
             if len(headers) > max_columns:
@@ -129,14 +121,12 @@ def manual_table_extraction(table):
             elif len(headers) < max_columns:
                 headers += [f"Column_{i+1}" for i in range(len(headers), max_columns)]
         
-        # Pad rows to match column count
         padded_rows = []
         for row in rows:
             if len(row) < max_columns:
                 row += [''] * (max_columns - len(row))
             padded_rows.append(row)
         
-        # Create DataFrame
         if headers and padded_rows:
             return pd.DataFrame(padded_rows, columns=headers)
         elif padded_rows:
@@ -158,7 +148,6 @@ def extract_content_robust(url, content_type, classes=None, ids=None, link_class
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Handle container IDs if specified
         containers = []
         if ids:
             for container_id in ids:
@@ -209,22 +198,19 @@ def extract_url(url, content_type, classes=None, ids=None, link_classes=None, nu
                 print(f"    ⚠️ No content found on page {page}")
                 continue
             
-            # Process tables
             if content_type == 'tables':
                 for i, df in enumerate(content):
                     all_content.append(df)
                     print(f"    ✅ Extracted table {i+1} ({len(df)} rows)")
             
-            # Process links
             elif content_type == 'links':
                 for link in content:
-                    # Make absolute URL
                     absolute_url = urljoin(target_url, link['url'])
                     link['absolute_url'] = absolute_url
                 all_content.extend(content)
                 print(f"    ✅ Extracted {len(content)} links")
                 
-            time.sleep(1.5)  # Be polite to servers
+            time.sleep(1.5)
             
         except Exception as e:
             print(f"🚨 Page {page} failed: {str(e)}")
@@ -244,7 +230,6 @@ def group_tables(tables):
             current_group.append(table)
             continue
             
-        # Check if current table has same headers as last table in current group
         prev_headers = list(current_group[-1].columns)
         curr_headers = list(table.columns)
         
@@ -265,12 +250,10 @@ def save_tables_with_gap(tables, output_path, source_url=None):
         import openpyxl
         from openpyxl.utils.dataframe import dataframe_to_rows
         
-        # Create workbook and remove default sheet
         workbook = openpyxl.Workbook()
         if workbook.sheetnames:
             workbook.remove(workbook.active)
         
-        # Create sheet with source-based name
         if source_url:
             domain = urlparse(source_url).netloc.replace('www.', '')[:15]
             sheet_name = f"{domain}_Data"
@@ -279,34 +262,27 @@ def save_tables_with_gap(tables, output_path, source_url=None):
         sheet_name = clean_sheet_name(sheet_name)
         worksheet = workbook.create_sheet(sheet_name)
         
-        # Group tables by header similarity
         table_groups = group_tables(tables)
         
-        # Start writing from row 1
         current_row = 1
         
         for group_idx, group in enumerate(table_groups):
-            # Write group label
             worksheet.cell(row=current_row, column=1, value=f"Table Group {group_idx+1}")
             current_row += 1
             
-            # Write header (only once per group)
             headers = group[0].columns.tolist()
             for col_idx, header in enumerate(headers, 1):
                 worksheet.cell(row=current_row, column=col_idx, value=header)
             current_row += 1
             
-            # Write all tables in the group without gaps
             for table in group:
                 for row_idx, row in table.iterrows():
                     for col_idx, value in enumerate(row, 1):
                         worksheet.cell(row=current_row, column=col_idx, value=value)
                     current_row += 1
             
-            # Add 5-row gap after group
             current_row += 5
         
-        # Save workbook
         workbook.save(output_path)
         print(f"💾 Saved Excel with {len(table_groups)} table groups: {os.path.abspath(output_path)}")
         return True
@@ -320,12 +296,10 @@ def save_content(content, content_type, output_path, source_url=None):
         print("❌ No content to save")
         return False
     
-    # Create directory if needed
     output_dir = os.path.dirname(output_path)
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    # Handle tables
     if content_type == 'tables':
         if output_path.endswith('.csv'):
             try:
@@ -353,9 +327,7 @@ def save_content(content, content_type, output_path, source_url=None):
             print("❌ Unsupported format. Using default: output.xlsx")
             return save_content(content, content_type, "output.xlsx", source_url)
     
-    # Handle links
     elif content_type == 'links':
-        # Create DataFrame from links
         try:
             df = pd.DataFrame(content)
         except Exception as e:
@@ -393,7 +365,6 @@ def save_content(content, content_type, output_path, source_url=None):
             
             try:
                 with pd.ExcelWriter(output_path) as writer:
-                    # Create meaningful sheet name
                     if source_url:
                         domain = urlparse(source_url).netloc.replace('www.', '')[:15]
                         sheet_name = f"{domain}_Links"
@@ -426,10 +397,8 @@ def main():
     print("🌐 XTRACT - WEB CONTENT EXTRACTOR".center(50))
     print("="*50)
     
-    # Check for required dependencies
     excel_support = check_dependencies()
     
-    # Content type selection
     content_type = input("\nExtract tables or links? (t/l): ").strip().lower()
     if content_type not in ['t', 'l']:
         print("\n❌ Invalid selection. Please choose 't' for tables or 'l' for links")
@@ -437,16 +406,13 @@ def main():
     
     content_type = 'tables' if content_type == 't' else 'links'
     
-    # Single vs Multiple URLs
     mode = input("\nSingle URL or Multiple URLs? (1/2): ").strip()
     
-    # Process URLs based on mode
     urls = []
     classes = None
     ids = None
     link_classes = None
     
-    # Get parameters only once for all URLs
     if content_type == 'tables':
         classes = parse_comma_separated(
             input("\nEnter table class(es) (optional, comma separated):\n> ").strip()
@@ -463,30 +429,26 @@ def main():
         )
     
     if mode == '1':
-        # Single URL processing
         url_input = input("\nEnter website URL:\n> ").strip()
         
-        # URL logic handling
-        if re.search(r'/\d+$', url_input):  # Specific page
+        if re.search(r'/\d+$', url_input):
             url = url_input
             num_pages = 1
-        elif re.search(r'\{(\d+)\}', url_input):  # Page range
+        elif re.search(r'\{(\d+)\}', url_input):
             num_pages = int(re.search(r'\{(\d+)\}', url_input).group(1))
             url = re.sub(r'\{\d+\}', '{}', url_input)
-        else:  # Single page
+        else:
             url = url_input
             num_pages = 1
             
         urls.append((url, num_pages))
         
-        # Output filename
         default_name = generate_unique_filename(
             urlparse(url).netloc.replace('www.', '')[:20] + f".{'xlsx' if content_type == 'tables' else 'txt'}",
             'xlsx' if content_type == 'tables' else 'txt'
         )
         filename = input(f"\nEnter output filename (default: {default_name}):\n> ").strip() or default_name
         
-        # Extract and save
         content = extract_url(
             url, 
             content_type, 
@@ -501,7 +463,6 @@ def main():
             print("\n❌ No content extracted. Check URL and parameters")
         
     elif mode == '2':
-        # Multiple URL processing
         print("\nEnter URLs (space/comma separated, multiple lines allowed):")
         print("Press Enter twice when finished")
         lines = []
@@ -512,31 +473,28 @@ def main():
             else:
                 break
                 
-        # Combine all lines
         combined_input = " ".join(lines)
         raw_urls = re.split(r'[,\s]+', combined_input)
         urls = []
         
-        # Process each URL
         for url in raw_urls:
             if not url:
                 continue
                 
-            if re.search(r'/\d+$', url):  # Specific page
+            if re.search(r'/\d+$', url):
                 urls.append((url, 1))
-            elif re.search(r'\{(\d+)\}', url):  # Page range
+            elif re.search(r'\{(\d+)\}', url):
                 num_pages = int(re.search(r'\{(\d+)\}', url).group(1))
                 base_url = re.sub(r'\{\d+\}', '{}', url)
                 urls.append((base_url, num_pages))
-            else:  # Single page
+            else:
                 urls.append((url, 1))
         
         print(f"\nFound {len(urls)} URLs to process")
         
-        # Output handling
         output_mode = input("\nSave in single file or multiple files? (1/2): ").strip()
         
-        if output_mode == '1':  # Single file
+        if output_mode == '1':
             if content_type == 'tables' and not excel_support:
                 print("\n❌ Excel support not available. Saving as multiple CSV files instead")
                 output_mode = '2'
@@ -548,12 +506,11 @@ def main():
                 elif '.' not in filename:
                     filename += f".{default_ext}"
                     
-                # For tables, save each URL to separate sheet
                 if content_type == 'tables':
                     try:
                         import openpyxl
                         workbook = openpyxl.Workbook()
-                        workbook.remove(workbook.active)  # Remove default sheet
+                        workbook.remove(workbook.active)
                         
                         for i, (url, num_pages) in enumerate(urls):
                             print(f"\nProcessing URL {i+1}/{len(urls)}: {url}")
@@ -566,36 +523,29 @@ def main():
                             )
                             
                             if content:
-                                # Create sheet for this URL
                                 domain = urlparse(url).netloc.replace('www.', '')[:15]
                                 sheet_name = clean_sheet_name(f"{domain}_{i+1}")
                                 worksheet = workbook.create_sheet(sheet_name)
                                 
-                                # Group tables by header similarity
                                 table_groups = group_tables(content)
                                 
-                                # Start writing from row 1
                                 current_row = 1
                                 
                                 for group_idx, group in enumerate(table_groups):
-                                    # Write group label
                                     worksheet.cell(row=current_row, column=1, value=f"Table Group {group_idx+1}")
                                     current_row += 1
                                     
-                                    # Write header (only once per group)
                                     headers = group[0].columns.tolist()
                                     for col_idx, header in enumerate(headers, 1):
                                         worksheet.cell(row=current_row, column=col_idx, value=header)
                                     current_row += 1
                                     
-                                    # Write all tables in the group without gaps
                                     for table in group:
                                         for row_idx, row in table.iterrows():
                                             for col_idx, value in enumerate(row, 1):
                                                 worksheet.cell(row=current_row, column=col_idx, value=value)
                                             current_row += 1
                                     
-                                    # Add 5-row gap after group
                                     current_row += 5
                                 
                                 print(f"  💾 Added sheet: {sheet_name}")
@@ -606,7 +556,7 @@ def main():
                         print(f"\n💾 Saved Excel with {len(workbook.sheetnames)} sheets: {os.path.abspath(filename)}")
                     except Exception as e:
                         print(f"🚨 Excel save failed: {str(e)}")
-                else:  # Links
+                else:
                     all_content = []
                     for i, (url, num_pages) in enumerate(urls):
                         print(f"\nProcessing URL {i+1}/{len(urls)}: {url}")
@@ -625,7 +575,7 @@ def main():
                     else:
                         print("\n❌ No content extracted from any URLs")
                 
-        if output_mode == '2':  # Multiple files
+        if output_mode == '2':
             output_dir = input("\nEnter output directory (default: current directory):\n> ").strip()
             if output_dir and not os.path.exists(output_dir):
                 os.makedirs(output_dir)
@@ -641,7 +591,6 @@ def main():
                 )
                 
                 if content:
-                    # Generate unique filename to prevent overwriting
                     base_name = urlparse(url).netloc.replace('www.', '')[:20] + \
                         f".{'xlsx' if content_type == 'tables' else 'txt'}"
                     if output_dir:
