@@ -68,20 +68,43 @@ pip install requests pandas beautifulsoup4 tqdm
 pip install openpyxl 
 ```
 
+## Storage Setup
+
+Enable Storage Access in Termux. In Termux, execute: 
+
+```bash
+termux-setup-storage
+```
+
+Grant the requested storage permission when prompted by Android. This creates symlinks in ~/storage/ for shared directories like Downloads and ensures Termux can read from /storage/emulated/0/.
+
+Configure Termux to Allow External App Access:
+
+In Termux, edit the configuration file: 
+
+```bash
+nano ~/.termux/termux.properties
+```
+
+Locate or add the line: ```allow-external-apps = true``` (uncomment it if present by removing the #). Save and exit the editor. Restart the Termux app completely (force-stop it via Android Settings > Apps > Termux > Force Stop, then relaunch). This enables the content provider (com.termux.files) to grant read access to URIs for apps like Chrome.
+
+
 ## Rclone Config
 
 ```bash
 rclone config
 ```
+Create a New Google Drive Remote
 
-n → New remote
-Name: gdrive
-Storage: choose Google Drive
-Client ID / Secret: leave empty
-Scope: 1 (full access)
-Root folder: leave empty
-Advanced config: n
-Auto config: y
+1. Select **n** → New remote  
+2. **Name**: `gdrive`  
+3. **Storage**: Choose **Google Drive**  
+4. **Client ID / Secret**: Leave empty  
+5. **Scope**: `1` (Full access)  
+6. **Root folder**: Leave empty  
+7. **Advanced config**: `n`  
+8. **Auto config**: `y`
+
 
 ## Installation
 
