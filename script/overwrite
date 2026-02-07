@@ -1,7 +1,26 @@
 #!/usr/bin/env bash
+
 if [ -z "$1" ]; then
   echo "Usage: overwrite <filename>"
   exit 1
 fi
-termux-clipboard-get > "$1"
-echo "Clipboard pasted into $1."
+
+if command -v pbpaste &> /dev/null; then
+    PASTE_CMD="pbpaste"
+elif command -v xclip &> /dev/null; then
+    PASTE_CMD="xclip -selection clipboard -o"
+elif command -v xsel &> /dev/null; then
+    PASTE_CMD="xsel --clipboard --output"
+elif command -v wl-paste &> /dev/null; then
+    PASTE_CMD="wl-paste"
+elif command -v termux-clipboard-get &> /dev/null; then
+    PASTE_CMD="termux-clipboard-get"
+elif command -v powershell.exe &> /dev/null; then
+    PASTE_CMD="powershell.exe -Command Get-Clipboard"
+else
+    echo "Error: No supported clipboard tool found (xclip, xsel, wl-paste, or pbpaste)."
+    exit 1
+fi
+
+$PASTE_CMD > "$1"
+echo "Clipboard content pasted into $1 using $PASTE_CMD."
