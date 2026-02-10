@@ -92,6 +92,16 @@ Locate or add the line: ```allow-external-apps = true``` (uncomment it if presen
 ## Rclone Config
 
 ```bash
+cd ~
+curl -LO https://downloads.rclone.org/rclone-current-linux-amd64.zip
+unzip rclone-current-linux-amd64.zip
+cd rclone-*-linux-amd64
+sudo cp rclone /usr/local/bin/
+sudo chmod 755 /usr/local/bin/rclone
+```
+Use the above code if you are in a remote shell like google cloud. Else ```pkg install rclone``` is suffice for termux
+
+```bash
 rclone config
 ```
 Create a New Google Drive Remote
