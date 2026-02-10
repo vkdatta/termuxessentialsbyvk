@@ -5,7 +5,9 @@ if [ -z "$1" ]; then
   exit 1
 fi
 
-if command -v pbpaste &> /dev/null; then
+if [ -n "$DEVSHELL_PROJECT_ID" ]; then
+    PASTE_CMD="manual_mobile"
+elif command -v pbpaste &> /dev/null; then
     PASTE_CMD="pbpaste"
 elif command -v xclip &> /dev/null; then
     PASTE_CMD="xclip -selection clipboard -o"
@@ -18,9 +20,27 @@ elif command -v termux-clipboard-get &> /dev/null; then
 elif command -v powershell.exe &> /dev/null; then
     PASTE_CMD="powershell.exe -Command Get-Clipboard"
 else
-    echo "Error: No supported clipboard tool found (xclip, xsel, wl-paste, or pbpaste)."
-    exit 1
+    PASTE_CMD="manual_mobile"
 fi
 
-$PASTE_CMD > "$1"
-echo "Clipboard content pasted into $1 using $PASTE_CMD."
+if [ "$PASTE_CMD" == "manual_mobile" ]; then
+    echo "📱 Headless/Mobile Mode Detected."
+    echo "1. Long-press to PASTE your content below."
+    echo "2. On a NEW LINE, type 'DONE' and press Enter to save."
+    echo "--------------------------------------------------"
+    
+    > "$1"
+
+    while IFS= read -r line; do
+        if [[ "$line" == "DONE" ]]; then
+            break
+        fi
+        echo "$line" >> "$1"
+    done
+    
+    echo "--------------------------------------------------"
+    echo "✅ Success: Saved to '$1' (excluding the 'DONE' keyword)."
+else
+    $PASTE_CMD > "$1"
+    echo "✅ Success: Clipboard content pasted into '$1'."
+fi
