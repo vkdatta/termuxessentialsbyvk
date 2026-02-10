@@ -127,8 +127,9 @@ pip install git+https://github.com/vkdatta/termuxessentialsbyvk.git
 If the commands are not working as intended, there might be a possible update in this code. As this is a tiny personal project, no upgrades are directly provided, and all changes are made to the main version itself. So force install the code for better performance. 
 
 ```bash
-pip install --upgrade --force-reinstall git+https://github.com/vkdatta/termuxessentialsbyvk.git
+pip install -vvv --progress-bar on --upgrade --force-reinstall git+https://github.com/vkdatta/termuxessentialsbyvk.git
 ```
+
 ## Usage
 
 | Command                       | Example                                         | What It Does                                                                                 |
