@@ -221,17 +221,24 @@ initiate_copy() {
             echo "Press 'b' to cancel copy operation"
             ;;
         2)
-            read -p "Enter destination folder name on gdrive (simple name -> gdrive:/user/<name>; or full remote path e.g. gdrive:/some/path): " remote_input
-            if [ -z "$remote_input" ]; then
-                echo "🚫 rclone copy cancelled (no destination provided)"
-                selected_items=()
-                return
-            fi
-            if [[ "$remote_input" == gdrive:* ]]; then
-                remote_path="$remote_input"
-            else
-                remote_path="gdrive:/user/$remote_input"
-            fi
+            remote_path="gdrive:/user"
+for item in "${selected_items[@]}"; do
+    if [ ! -e "$item" ]; then
+        echo "❌ Item not found: $(basename "$item")"
+        continue
+    fi
+
+    base=$(basename "$item")
+    echo "📤 Copying $(basename "$item") → $remote_path/$base"
+    rclone copy "$item" "$remote_path/$base" --progress --metadata
+    rc=$?
+    if [ $rc -ne 0 ]; then
+        echo "❌ rclone failed for $(basename "$item") (exit code $rc)"
+    else
+        echo "✅ rclone succeeded for $(basename "$item")"
+    fi
+done
+
             if ! command -v rclone >/dev/null 2>&1; then
                 echo "❌ rclone not found in PATH. Please install rclone and configure a remote named 'gdrive'."
                 selected_items=()
