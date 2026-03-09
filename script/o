@@ -221,29 +221,12 @@ initiate_copy() {
             echo "Press 'b' to cancel copy operation"
             ;;
         2)
-            remote_path="gdrive:/rclone"
-for item in "${selected_items[@]}"; do
-    if [ ! -e "$item" ]; then
-        echo "❌ Item not found: $(basename "$item")"
-        continue
-    fi
-
-    base=$(basename "$item")
-    echo "📤 Copying $(basename "$item") → $remote_path/$base"
-    rclone copy "$item" "$remote_path/$base" --progress --metadata
-    rc=$?
-    if [ $rc -ne 0 ]; then
-        echo "❌ rclone failed for $(basename "$item") (exit code $rc)"
-    else
-        echo "✅ rclone succeeded for $(basename "$item")"
-    fi
-done
-
-            if ! command -v rclone >/dev/null 2>&1; then
+           if ! command -v rclone >/dev/null 2>&1; then
                 echo "❌ rclone not found in PATH. Please install rclone and configure a remote named 'gdrive'."
                 selected_items=()
                 return
             fi
+            remote_path="gdrive:/rclone"
             echo
             echo "📤 Starting rclone copy to: $remote_path"
             for item in "${selected_items[@]}"; do
@@ -251,9 +234,10 @@ done
                     echo "❌ Item not found: $(basename "$item")"
                     continue
                 fi
+                base=$(basename "$item")
                 echo
-                echo "➡️ rclone copy: $(basename "$item") -> $remote_path"
-                rclone copy "$item" "$remote_path" --progress --metadata
+                echo "📤 Copying $(basename "$item") → $remote_path/$base"
+                rclone copy "$item" "$remote_path/$base" --progress --metadata
                 rc=$?
                 if [ $rc -ne 0 ]; then
                     echo "❌ rclone failed for $(basename "$item") (exit code $rc)"
@@ -264,7 +248,7 @@ done
             echo
             echo "✅ All requested rclone copy operations finished."
             selected_items=()
-            ;;
+            ;;        
         *)
             echo "❌ Invalid choice. Cancelled copy."
             selected_items=()
