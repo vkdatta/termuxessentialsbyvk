@@ -221,7 +221,7 @@ initiate_copy() {
             echo "Press 'b' to cancel copy operation"
             ;;
         2)
-            remote_path="gdrive:/user"
+            remote_path="gdrive:/rclone"
 for item in "${selected_items[@]}"; do
     if [ ! -e "$item" ]; then
         echo "❌ Item not found: $(basename "$item")"
