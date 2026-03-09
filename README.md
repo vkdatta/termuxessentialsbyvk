@@ -89,17 +89,28 @@ nano ~/.termux/termux.properties
 Locate or add the line: ```allow-external-apps = true``` (uncomment it if present by removing the #). Save and exit the editor. Restart the Termux app completely (force-stop it via Android Settings > Apps > Termux > Force Stop, then relaunch). This enables the content provider (com.termux.files) to grant read access to URIs for apps like Chrome.
 
 
-## Rclone Config
+## Rclone Setup and Config
 
 ```bash
 cd ~
 curl -LO https://downloads.rclone.org/rclone-current-linux-amd64.zip
-unzip rclone-current-linux-amd64.zip
-cd rclone-*-linux-amd64
-sudo cp rclone /usr/local/bin/
-sudo chmod 755 /usr/local/bin/rclone
+unzip -j rclone-current-linux-amd64.zip "*/rclone" -d ~/bin/
+chmod 755 ~/bin/rclone
+rm rclone-current-linux-amd64.zip
+if [[ ":$PATH:" != *":$HOME/bin:"* ]]; then
+    echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
+    source ~/.bashrc
+fi
 ```
-Use the above code if you are in a remote shell like google cloud. Else ```pkg install rclone``` is suffice for termux
+Use the above code if you are in a remote shell like google cloud. 
+
+Else 
+
+```bash
+pkg install rclone
+``` 
+
+is suffice.
 
 ```bash
 rclone config
