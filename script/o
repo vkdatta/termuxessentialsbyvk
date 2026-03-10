@@ -2,6 +2,8 @@
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+shopt -s nullglob
+
 for f in "$BASE_DIR/filemanagement/"*.sh; do
     source "$f"
 done
@@ -17,8 +19,6 @@ render_menu() {
 }
 
 init_path "$@"
-
-shopt -s nullglob
 
 while true; do
 
