@@ -579,9 +579,11 @@ while true; do
     if $move_mode || $copy_mode; then
         echo "c) Confirm   x) Cancel"
     else
-        echo "u) Up directory   cd) change directory"
-        echo "t) Transfer (move/copy)   d) Delete items   c) Create   f) Find   x) Organise   r) Rename"
+echo "________________________________________________________________________"
+        echo "u) Up directory   cd) change directory t) Transfer (move/copy)"
+        echo "d) Delete  c) Create   f) Find   x) Organise   r) Rename"
         echo "q/h) Quit/Home"
+echo "________________________________________________________________________"
     fi
 
     read -p "Select item number: " choice
