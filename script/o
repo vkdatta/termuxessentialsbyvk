@@ -1,7 +1,22 @@
 #!/usr/bin/env bash
 
+source "copyitems.sh"
+source "moveitems.sh"
+source "modemenu.sh"
+
+source "0_state.sh"
 source "1_handlepath.sh"
- 
+source "2u_up.sh"
+source "3nf_handlecreate.sh"
+source "4d_handledelete.sh"
+
+source "0_handlefile.sh"
+source "0handlerun.sh"
+source "1handleopen.sh"
+source "7handlerename.sh"
+source "8share.sh"
+
+
 render_menu() {
     if $move_mode || $copy_mode; then
         echo "c) Confirm   x) Cancel"
