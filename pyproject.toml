@@ -5,11 +5,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "termuxessentialsbyvk"
 version = "0.0"
-description = "Termux workflow utilities"
+description = "Lightweight Termux workflow utilities"
 readme = "README.md"
-authors = [{name = "vk datta"}]
-license = {text = "MIT"}
 requires-python = ">=3.8"
+authors = [{name="vk datta"}]
+license = {text="MIT"}
 
 [project.scripts]
-0termuxessentialsbyvk = "termuxessentialsbyvk.main:main"
+termuxessentialsbyvk = "script.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["script*"]
