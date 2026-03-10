@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
 
-source "./script/filemanagement/0_state.sh"
-source "./script/filemanagement/1_handlepath.sh"
-source "./script/filemanagement/2u_up.sh"
-source "./script/filemanagement/3nf_handlecreate.sh"
-source "./script/filemanagement/4d_handledelete.sh"
-
-shopt -s nullglob
-
 render_menu() {
     if $move_mode || $copy_mode; then
         echo "c) Confirm   x) Cancel"
@@ -19,6 +11,8 @@ render_menu() {
 }
 
 init_path "$@"
+
+shopt -s nullglob
 
 while true; do
 
