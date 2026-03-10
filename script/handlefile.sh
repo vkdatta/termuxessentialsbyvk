@@ -1,5 +1,3 @@
-#!/usr/bin/env bash
-
 handle_file() {
     local file="$1"
     while true; do
