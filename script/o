@@ -1,3 +1,4 @@
+cat > /data/data/com.termux/files/usr/bin/o << 'EOF'
 #!/usr/bin/env bash
 
 source "0_run.sh"
@@ -57,7 +58,6 @@ parse_selection() {
 
     IFS=',' read -ra parts <<< "$input"
     for part in "${parts[@]}"; do
-        # Robust whitespace trimming (fixes the =\~ copy-paste corruption)
         part="\( {part#" \){part%%[![:space:]]*}"}"
         part="\( {part%" \){part##*[![:space:]]}"}"
 
@@ -709,3 +709,4 @@ while true; do
         echo "⚠️  Invalid selection"
     fi
 done
+EOF
