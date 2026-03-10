@@ -2,7 +2,7 @@
 
 source "0_run.sh"
 
-# ====================== COMMON HELPERS (now fully reusable) ======================
+# ====================== COMMON HELPERS (fully reusable & DRY) ======================
 
 get_top_level_files() {
     local p="$1"
@@ -54,9 +54,13 @@ parse_selection() {
     local input="$1"
     local max="$2"
     local -a indices=()
+
     IFS=',' read -ra parts <<< "$input"
     for part in "${parts[@]}"; do
-        part=$(echo "$part" | xargs)
+        # Robust whitespace trimming (fixes the =\~ copy-paste corruption)
+        part="\( {part#" \){part%%[![:space:]]*}"}"
+        part="\( {part%" \){part##*[![:space:]]}"}"
+
         if [[ "\( part" =\~ ^([0-9]+)-([0-9]+) \) ]]; then
             local start="${BASH_REMATCH[1]}"
             local end="${BASH_REMATCH[2]}"
@@ -282,7 +286,7 @@ find_menu() {
     done
 }
 
-# ====================== ORGANISE (now DRY - no duplication) ======================
+# ====================== ORGANISE ======================
 
 organise_by_ext() {
     echo "📁 Organise by extension:"
@@ -381,7 +385,6 @@ organise_by_year_month() {
         local m_idx=$((10#$mnum - 1))
         local monthname="${month_abbr[$m_idx]}"
 
-        # Year level
         if [ "$group_y" -eq 1 ]; then
             local year_leaf="$path/...$y"
         else
@@ -395,7 +398,6 @@ organise_by_year_month() {
         fi
         mkdir -p "$year_leaf"
 
-        # Month level
         if [ "$group_m" -eq 1 ]; then
             local mgname="...$monthname"
             local mleaf="$year_leaf/$mgname"
@@ -438,7 +440,6 @@ organise_by_year_month_date() {
         local monthname="${month_abbr[$m_idx]}"
         local dnum_clean=\( ((10# \)(get_day "$f")))
 
-        # Year level
         if [ "$group_y" -eq 1 ]; then
             local year_leaf="$path/...$y"
         else
@@ -452,7 +453,6 @@ organise_by_year_month_date() {
         fi
         mkdir -p "$year_leaf"
 
-        # Month level
         if [ "$group_m" -eq 1 ]; then
             local mgname="...$monthname"
             local mleaf="$year_leaf/$mgname"
@@ -469,7 +469,6 @@ organise_by_year_month_date() {
         fi
         mkdir -p "$mleaf"
 
-        # Date level
         if [ "$group_d" -eq 1 ]; then
             local dgname="...$dnum_clean"
             local final_path="$mleaf/$dgname"
@@ -585,7 +584,6 @@ while true; do
 
     read -p "Select item number: " choice
 
-    # Mode confirm/cancel
     if $move_mode; then
         case "$choice" in
             c|C)
@@ -628,7 +626,6 @@ while true; do
         esac
     fi
 
-    # Main menu
     case "$choice" in
         q|Q|h|H) exit 0 ;;
         u|U)
