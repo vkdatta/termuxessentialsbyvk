@@ -2,6 +2,7 @@
 
 source "0_run.sh"
 source "0_organise.sh"
+source "0_find.sh"
 source "bashbasicsbyvk_settings.sh"
 
 # ====================== COMMON HELPERS (now fully reusable) ======================
