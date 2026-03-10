@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 source "0_run.sh"
+source "bashbasicsbyvk_settings.sh"
 
 # ====================== COMMON HELPERS (now fully reusable) ======================
 
@@ -563,8 +564,21 @@ while true; do
         echo "📂 Location: $path"
     fi
 
-    items=("$path"/{*,.*})
-    if [ ${#items[@]} -eq 0 ]; then
+  items=()
+    if $show_all_types; then
+        for f in "$path"/{*,.*}; do
+            [ -e "$f" ] || continue
+            [[ "$(basename "$f")" == "." || "$(basename "$f")" == ".." ]] && continue
+            items+=("$f")
+        done
+    else
+        for f in "$path"/*; do
+            [ -e "$f" ] || continue
+            items+=("$f")
+        done
+    fi
+
+if [ ${#items[@]} -eq 0 ]; then
         echo "🛑 This directory is empty"
     else
         idx=1
@@ -579,11 +593,9 @@ while true; do
     if $move_mode || $copy_mode; then
         echo "c) Confirm   x) Cancel"
     else
-echo "________________________________________________________________________"
         echo "u) Up directory   cd) change directory t) Transfer (move/copy)"
         echo "d) Delete  c) Create   f) Find   x) Organise   r) Rename"
-        echo "q/h) Quit/Home"
-echo "________________________________________________________________________"
+        echo "q/h) Quit/Home s) Settings"
     fi
 
     read -p "Select item number: " choice
@@ -666,6 +678,10 @@ echo "________________________________________________________________________"
             ;;
         x|X)
             organise_menu
+            continue
+            ;;
+        s|S)
+            settings_menu
             continue
             ;;
         r|R)
