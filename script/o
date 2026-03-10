@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source ".filemanagement/1_handlepath.sh"
+ 
 render_menu() {
     if $move_mode || $copy_mode; then
         echo "c) Confirm   x) Cancel"
