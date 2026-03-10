@@ -1,22 +1,12 @@
 #!/usr/bin/env bash
 
-get_script_dir() {
-    local source="${BASH_SOURCE[0]}"
-    while [[ -L "$source" ]]; do
-        local dir
-        dir="$(cd -P "$(dirname "$source")" 2>/dev/null && pwd)"
-        source="$(readlink "$source")"
-        [[ "$source" != /* ]] && source="$dir/$source"
-    done
-    echo "$(cd -P "$(dirname "$source")" 2>/dev/null && pwd)"
-}
-
-BASE_DIR="$(get_script_dir)"
+source "./script/filemanagement/0_state.sh"
+source "./script/filemanagement/1_handlepath.sh"
+source "./script/filemanagement/2u_up.sh"
+source "./script/filemanagement/3nf_handlecreate.sh"
+source "./script/filemanagement/4d_handledelete.sh"
 
 shopt -s nullglob
-for f in "$BASE_DIR/filemanagement/"*.sh; do
-    [[ -f "$f" ]] && source "$f"
-done
 
 render_menu() {
     if $move_mode || $copy_mode; then
