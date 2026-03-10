@@ -1,3 +1,72 @@
+handle_file() {
+    local file="$1"
+    while true; do
+        echo
+        echo "📄 File selected: $(basename "$file")"
+        echo "What would you like to do with the file?"
+        echo "0) Run"
+        echo "1) View"
+        echo "2) Edit"
+        echo "3) Copy Content"
+        echo "4) Delete Content"
+        echo "5) Erase Content"
+        echo "6) Replace With Clipboard Content"
+        echo "7) Rename File" 
+        echo "8) Share"
+        echo "u) Back to Previous Menu"
+        echo "q/h) Back to Home/Exit"
+        read -p "Enter choice: " action
+
+        case "$action" in
+            0)
+                run_file "$file"
+                return 1
+                ;;
+            1)
+                force_open "$file"
+                return 1
+                ;;
+            2)
+                nano "$file"
+                return 1
+                ;;
+            3)
+                copy "$file"
+                return 1
+                ;;
+            4)
+                delete "$file"
+                return 1
+                ;;
+            5)
+                erase "$file"
+                return 1
+                ;;
+            6)
+                overwrite "$file"
+                return 1
+                ;;
+            7)
+                rename_item "$file"
+                return 1
+                ;;
+            8)
+                force_share "$file"
+                return 1
+                ;;
+            u|U)
+                return 1
+                ;;
+            q|Q|h|H)
+                exit 0
+                ;;
+            *)
+                echo "❌ Invalid option. Try again."
+                ;;
+        esac
+    done
+}
+
 determine_shared_dir() {
     if [ -d "$HOME/storage/shared" ]; then
         echo "$HOME/storage/shared/Download"
