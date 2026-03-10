@@ -3,11 +3,12 @@
 get_script_dir() {
     local source="${BASH_SOURCE[0]}"
     while [[ -L "$source" ]]; do
-        local dir="\( (cd -P " \)(dirname "$source")" 2>/dev/null && pwd)"
+        local dir
+        dir="$(cd -P "$(dirname "$source")" 2>/dev/null && pwd)"
         source="$(readlink "$source")"
         [[ "$source" != /* ]] && source="$dir/$source"
     done
-    echo "\( (cd -P " \)(dirname "$source")" 2>/dev/null && pwd)"
+    echo "$(cd -P "$(dirname "$source")" 2>/dev/null && pwd)"
 }
 
 BASE_DIR="$(get_script_dir)"
