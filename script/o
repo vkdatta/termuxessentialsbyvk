@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
+SCRIPT_PATH=$(readlink -f "$0")
+SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
+found_files=0
 while IFS= read -r f; do
-    [[ "$f" == "$SCRIPT_DIR/o" ]] && continue
+    [[ "$f" == "$SCRIPT_PATH" ]] && continue
     source "$f"
-done < <(find "$SCRIPT_DIR" -type f -name "*.sh")
+    ((found_files++))
+done < <(find "$SCRIPT_DIR" -maxdepth 1 -type f -name "*.sh")
+
+if [ "$found_files" -eq 0 ]; then
+    echo "Error: No .sh function files found in $SCRIPT_DIR"
+fi
 
 render_menu() {
     if $move_mode || $copy_mode; then
