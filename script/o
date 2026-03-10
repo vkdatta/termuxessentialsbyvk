@@ -1,0 +1,714 @@
+#!/usr/bin/env bash
+
+source "0_run.sh"
+
+# ====================== COMMON HELPERS (now fully reusable) ======================
+
+get_top_level_files() {
+    local p="$1"
+    local -a fl=()
+    for f in "$p"/*; do
+        [ -f "$f" ] && fl+=("$f")
+    done
+    echo "${fl[@]}"
+}
+
+get_min_max_year() {
+    local p="$1"
+    local min_y=99999 max_y=0
+    local -a files
+    read -ra files <<< "$(get_top_level_files "$p")"
+    for f in "${files[@]}"; do
+        local y=$(get_year "$f")
+        (( y < min_y )) && min_y=$y
+        (( y > max_y )) && max_y=$y
+    done
+    echo "$min_y $max_y"
+}
+
+get_mtime() {
+    stat -c %Y "$1" 2>/dev/null || echo 0
+}
+
+get_year() {
+    local ts=$(get_mtime "$1")
+    date -d "@$ts" +%Y 2>/dev/null || echo 0
+}
+
+get_month_num() {
+    local ts=$(get_mtime "$1")
+    date -d "@$ts" +%m 2>/dev/null || echo 0
+}
+
+get_day() {
+    local ts=$(get_mtime "$1")
+    date -d "@$ts" +%d 2>/dev/null || echo 0
+}
+
+get_month_name() {
+    local ts=$(get_mtime "$1")
+    date -d "@$ts" +%b | tr '[:upper:]' '[:lower:]' 2>/dev/null || echo "unknown"
+}
+
+parse_selection() {
+    local input="$1"
+    local max="$2"
+    local -a indices=()
+    IFS=',' read -ra parts <<< "$input"
+    for part in "${parts[@]}"; do
+        part=$(echo "$part" | xargs)
+        if [[ "\( part" =\~ ^([0-9]+)-([0-9]+) \) ]]; then
+            local start="${BASH_REMATCH[1]}"
+            local end="${BASH_REMATCH[2]}"
+            for ((i=start; i<=end && i<=max; i++)); do
+                indices+=("$i")
+            done
+        elif [[ "\( part" =\~ ^[0-9]+ \) ]]; then
+            local num="$part"
+            (( num >= 1 && num <= max )) && indices+=("$num")
+        fi
+    done
+    echo "${indices[@]}"
+}
+
+select_items_common() {
+    local prompt="$1"
+    if [ ${#items[@]} -eq 0 ]; then
+        echo "❌ No items available"
+        return 1
+    fi
+    echo "$prompt (supports ranges: 1-10,15-20,33)"
+    read -p "Item numbers: " itemlist
+    local indices=($(parse_selection "\( itemlist" " \){#items[@]}"))
+    selected_items=()
+    for idx in "${indices[@]}"; do
+        selected_items+=("\( {items[ \)((idx-1))]}")
+    done
+    if [ ${#selected_items[@]} -eq 0 ]; then
+        echo "❌ No valid items selected"
+        return 1
+    fi
+    echo "📦 Selected:"
+    for item in "${selected_items[@]}"; do
+        echo "   - $(basename "$item")"
+    done
+    return 0
+}
+
+# ====================== ORIGINAL FUNCTIONS ======================
+
+rename_item() {
+    local target="$1"
+    local dir newname
+    if [ -d "$target" ]; then
+        dir=$(dirname -- "$target")
+        read -p "📝 Enter new folder name for '$(basename "$target")': " newname
+        mv -v "$target" "$dir/$newname"
+    elif [ -f "$target" ]; then
+        dir=$(dirname -- "$target")
+        read -p "📝 Enter new file name for '$(basename "$target")': " newname
+        mv -v "$target" "$dir/$newname"
+    else
+        echo "❌ Cannot rename: '$target' not found." >&2
+        return 1
+    fi
+}
+
+get_abs_path() {
+    local target="$1"
+    if [ -d "$target" ]; then
+        cd -- "$target" && pwd
+    elif [ -f "$target" ]; then
+        local dir=$(dirname -- "$target")
+        local base=$(basename -- "$target")
+        echo "$(cd -- "$dir" && pwd)/$base"
+    else
+        echo "Error: '$target' does not exist" >&2
+        return 1
+    fi
+}
+
+create_files() {
+    read -p "📄 Enter filenames (separated by ,): " filelist
+    IFS=',' read -ra files <<< "$filelist"
+    for file in "${files[@]}"; do
+        touch "$path/$file"
+        echo "✅ Created file: $file"
+    done
+}
+
+create_dirs() {
+    read -p "📂 Enter folder names (separated by ,): " dirlist
+    IFS=',' read -ra dirs <<< "$dirlist"
+    for dir in "${dirs[@]}"; do
+        mkdir -p "$path/$dir"
+        echo "✅ Created folder: $dir"
+    done
+}
+
+move_items() {
+    if select_items_common "MOVE"; then
+        original_path="$path"
+        path="$HOME"
+        move_mode=true
+        echo "🌍 MOVE MODE: Navigate to destination folder (press 'c' to confirm, 'x' to cancel)"
+    fi
+}
+
+delete_items() {
+    if select_items_common "DELETE"; then
+        echo "⚠️  WARNING: You are about to delete the following items:"
+        for item in "${selected_items[@]}"; do
+            echo "- $(basename "$item")"
+        done
+        read -p "Are you sure? This cannot be undone. (y/n): " confirm
+        if [[ $confirm != "y" && $confirm != "Y" ]]; then
+            echo "🚫 Deletion cancelled"
+            return
+        fi
+        for item in "${selected_items[@]}"; do
+            rm -rf -- "$item" && echo "🗑️  Deleted: $(basename "$item")"
+        done
+    fi
+}
+
+initiate_copy() {
+    if select_items_common "COPY"; then
+        echo "Choose copy target:"
+        echo "1) Local (navigate)"
+        echo "2) Google Drive via rclone"
+        read -p "Enter choice [1-2]: " copy_choice
+        case "$copy_choice" in
+            1)
+                original_path="$path"
+                path="$HOME"
+                copy_mode=true
+                echo "📋 COPY MODE: Navigate to destination folder (press 'c' to confirm, 'x' to cancel)"
+                ;;
+            2)
+                if ! command -v rclone >/dev/null 2>&1; then
+                    echo "❌ rclone not found in PATH."
+                    selected_items=()
+                    return
+                fi
+                local remote_path="gdrive:/rclone"
+                for item in "${selected_items[@]}"; do
+                    local base=$(basename "$item")
+                    echo "📤 Copying $base → gdrive..."
+                    rclone copy "$item" "$remote_path/$base" --progress --metadata
+                done
+                selected_items=()
+                ;;
+            *)
+                selected_items=()
+                ;;
+        esac
+    fi
+}
+
+perform_copy() {
+    for item in "${selected_items[@]}"; do
+        [ ! -e "$item" ] && continue
+        local base=$(basename -- "$item")
+        local name="${base%.*}"
+        local ext="${base##*.}"
+        [[ "$base" == "$ext" ]] && ext=""
+        local count=1
+        local newbase="$base"
+        while [ -e "$path/$newbase" ]; do
+            if [ -n "$ext" ]; then
+                newbase="\( {name}_ \){count}.${ext}"
+            else
+                newbase="\( {name}_ \){count}"
+            fi
+            count=$((count+1))
+        done
+        cp -r -- "$item" "$path/$newbase"
+        echo "📋 Copied: $(basename "$item") → $newbase"
+    done
+}
+
+# ====================== FIND ======================
+
+find_menu() {
+    echo "🔍 Find mode in: $path"
+    echo "1) Find file/folder names"
+    echo "2) Find inside file contents"
+    read -p "Choice: " ftype
+
+    local -a results=()
+    case "$ftype" in
+        1)
+            read -p "Name pattern (e.g. report): " pat
+            mapfile -t results < <(find "$path" -name "*$pat*" 2>/dev/null | head -100)
+            ;;
+        2)
+            read -p "Text to search inside files: " pat
+            mapfile -t results < <(grep -rl "$pat" "$path" 2>/dev/null | head -100)
+            ;;
+        *) return ;;
+    esac
+
+    if [ ${#results[@]} -eq 0 ]; then
+        echo "No results."
+        return
+    fi
+
+    echo "📋 Found ${#results[@]} results:"
+    for i in "${!results[@]}"; do
+        local rel=$(realpath --relative-to="\( path" " \){results[\( i]}" 2>/dev/null || basename " \){results[$i]}")
+        printf "%3d) %s\n" $((i+1)) "$rel"
+    done
+
+    echo "Enter g<number> to go to result or q/h to exit find"
+    while true; do
+        read -p "Action: " act
+        case "$act" in
+            q|Q|h|H) return ;;
+            g[0-9]*)
+                local num="${act#g}"
+                if [[ \( num =\~ ^[0-9]+ \) ]] && (( num >=1 && num <= ${#results[@]} )); then
+                    local target="\( {results[ \)((num-1))]}"
+                    if [ -d "$target" ]; then
+                        path="$target"
+                    elif [ -f "$target" ]; then
+                        handle_file "$target"
+                    fi
+                    return
+                fi
+                ;;
+            *) echo "Invalid. Use g<number> or q" ;;
+        esac
+    done
+}
+
+# ====================== ORGANISE (now DRY - no duplication) ======================
+
+organise_by_ext() {
+    echo "📁 Organise by extension:"
+    echo "1) All files by ext"
+    echo "2) Selected extension"
+    read -p "Choice: " ech
+    local -a files
+    read -ra files <<< "$(get_top_level_files "$path")"
+    [ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
+
+    case "$ech" in
+        1)
+            declare -A exts
+            for f in "${files[@]}"; do
+                local b=$(basename "$f")
+                local e="${b##*.}"
+                [ "$e" = "$b" ] && e="noext"
+                exts["$e"]=1
+            done
+            for e in "${!exts[@]}"; do
+                local folder="$path/...$e"
+                mkdir -p "$folder"
+                if [ "$e" = "noext" ]; then
+                    for f in "${files[@]}"; do
+                        [[ "$(basename "$f")" != *.* ]] && mv -v "$f" "$folder/"
+                    done
+                else
+                    for f in "$path"/*."$e"; do [ -f "$f" ] && mv -v "$f" "$folder/"; done
+                fi
+            done
+            ;;
+        2)
+            read -p "Extension (e.g. py or .py): " inputext
+            local ext="${inputext#.}"
+            [ -z "$ext" ] && ext="noext"
+            local folder="$path/...$ext"
+            mkdir -p "$folder"
+            if [ "$ext" = "noext" ]; then
+                for f in "${files[@]}"; do
+                    [[ "$(basename "$f")" != *.* ]] && mv -v "$f" "$folder/"
+                done
+            else
+                for f in "$path"/*."$ext"; do [ -f "$f" ] && mv -v "$f" "$folder/"; done
+            fi
+            ;;
+    esac
+    echo "✅ Organised by extension"
+}
+
+organise_by_year() {
+    local min_max=($(get_min_max_year "$path"))
+    local min_y=\( {min_max[0]} max_y= \){min_max[1]}
+    local -a files
+    read -ra files <<< "$(get_top_level_files "$path")"
+    [ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
+
+    read -p "Number of years to group (1 = each year separate): " group_y
+    [[ \( group_y =\~ ^[0-9]+ \) ]] || group_y=1
+
+    for f in "${files[@]}"; do
+        local y=$(get_year "$f")
+        if [ "$group_y" -eq 1 ]; then
+            local gname="...$y"
+            mkdir -p "$path/$gname"
+            mv -v "$f" "$path/$gname/"
+        else
+            local offset=$(( y - min_y ))
+            local gstart=$(( min_y + (offset / group_y) * group_y ))
+            local gend=$(( gstart + group_y - 1 ))
+            [ $gend -gt $max_y ] && gend=$max_y
+            local gname="...\( {gstart}- \){gend}"
+            local sub="...$y"
+            mkdir -p "$path/$gname/$sub"
+            mv -v "$f" "$path/$gname/$sub/"
+        fi
+    done
+    echo "✅ Organised by year(s)"
+}
+
+organise_by_year_month() {
+    local min_max=($(get_min_max_year "$path"))
+    local min_y=\( {min_max[0]} max_y= \){min_max[1]}
+    local -a files
+    read -ra files <<< "$(get_top_level_files "$path")"
+    [ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
+
+    read -p "Number of years to group: " group_y
+    [[ \( group_y =\~ ^[0-9]+ \) ]] || group_y=1
+    read -p "Number of months to group: " group_m
+    [[ \( group_m =\~ ^[0-9]+ \) ]] || group_m=1
+    local -a month_abbr=(jan feb mar apr may jun jul aug sep oct nov dec)
+
+    for f in "${files[@]}"; do
+        local y=$(get_year "$f")
+        local mnum=$(get_month_num "$f")
+        local m_idx=$((10#$mnum - 1))
+        local monthname="${month_abbr[$m_idx]}"
+
+        # Year level
+        if [ "$group_y" -eq 1 ]; then
+            local year_leaf="$path/...$y"
+        else
+            local offset=$(( y - min_y ))
+            local gstart=$(( min_y + (offset / group_y) * group_y ))
+            local gend=$(( gstart + group_y - 1 ))
+            [ $gend -gt $max_y ] && gend=$max_y
+            local year_group="...\( {gstart}- \){gend}"
+            local year_sub="...$y"
+            local year_leaf="$path/$year_group/$year_sub"
+        fi
+        mkdir -p "$year_leaf"
+
+        # Month level
+        if [ "$group_m" -eq 1 ]; then
+            local mgname="...$monthname"
+            local mleaf="$year_leaf/$mgname"
+        else
+            local mgroup_idx=$(( (10#$mnum -1) / group_m ))
+            local mstart=$(( mgroup_idx * group_m + 1 ))
+            local mend=$(( mstart + group_m - 1 ))
+            [ $mend -gt 12 ] && mend=12
+            local mstart_name="\( {month_abbr[ \)((mstart-1))]}"
+            local mend_name="\( {month_abbr[ \)((mend-1))]}"
+            local mgname="...\( {mstart_name}- \){mend_name}"
+            local msub="...$monthname"
+            local mleaf="$year_leaf/$mgname/$msub"
+        fi
+        mkdir -p "$mleaf"
+        mv -v "$f" "$mleaf/"
+    done
+    echo "✅ Organised by year(s) > month(s)"
+}
+
+organise_by_year_month_date() {
+    local min_max=($(get_min_max_year "$path"))
+    local min_y=\( {min_max[0]} max_y= \){min_max[1]}
+    local -a files
+    read -ra files <<< "$(get_top_level_files "$path")"
+    [ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
+
+    read -p "Number of years to group: " group_y
+    [[ \( group_y =\~ ^[0-9]+ \) ]] || group_y=1
+    read -p "Number of months to group: " group_m
+    [[ \( group_m =\~ ^[0-9]+ \) ]] || group_m=1
+    read -p "Number of days to group: " group_d
+    [[ \( group_d =\~ ^[0-9]+ \) ]] || group_d=1
+    local -a month_abbr=(jan feb mar apr may jun jul aug sep oct nov dec)
+
+    for f in "${files[@]}"; do
+        local y=$(get_year "$f")
+        local mnum=$(get_month_num "$f")
+        local m_idx=$((10#$mnum - 1))
+        local monthname="${month_abbr[$m_idx]}"
+        local dnum_clean=\( ((10# \)(get_day "$f")))
+
+        # Year level
+        if [ "$group_y" -eq 1 ]; then
+            local year_leaf="$path/...$y"
+        else
+            local offset=$(( y - min_y ))
+            local gstart=$(( min_y + (offset / group_y) * group_y ))
+            local gend=$(( gstart + group_y - 1 ))
+            [ $gend -gt $max_y ] && gend=$max_y
+            local year_group="...\( {gstart}- \){gend}"
+            local year_sub="...$y"
+            local year_leaf="$path/$year_group/$year_sub"
+        fi
+        mkdir -p "$year_leaf"
+
+        # Month level
+        if [ "$group_m" -eq 1 ]; then
+            local mgname="...$monthname"
+            local mleaf="$year_leaf/$mgname"
+        else
+            local mgroup_idx=$(( (10#$mnum -1) / group_m ))
+            local mstart=$(( mgroup_idx * group_m + 1 ))
+            local mend=$(( mstart + group_m - 1 ))
+            [ $mend -gt 12 ] && mend=12
+            local mstart_name="\( {month_abbr[ \)((mstart-1))]}"
+            local mend_name="\( {month_abbr[ \)((mend-1))]}"
+            local mgname="...\( {mstart_name}- \){mend_name}"
+            local msub="...$monthname"
+            local mleaf="$year_leaf/$mgname/$msub"
+        fi
+        mkdir -p "$mleaf"
+
+        # Date level
+        if [ "$group_d" -eq 1 ]; then
+            local dgname="...$dnum_clean"
+            local final_path="$mleaf/$dgname"
+        else
+            local dgroup_idx=$(( (dnum_clean - 1) / group_d ))
+            local dstart=$(( dgroup_idx * group_d + 1 ))
+            local dend=$(( dstart + group_d - 1 ))
+            [ $dend -gt 31 ] && dend=31
+            local dgname="...\( {dstart}- \){dend}"
+            local dsub="...$dnum_clean"
+            local final_path="$mleaf/$dgname/$dsub"
+        fi
+        mkdir -p "$final_path"
+        mv -v "$f" "$final_path/"
+    done
+    echo "✅ Organised by year(s) > month(s) > date(s)"
+}
+
+unorganise() {
+    echo "🔄 Unorganise and bring to current location:"
+    echo "1) Unorganise all"
+    echo "2) Unorganise selected folders"
+    read -p "Choice: " uch
+
+    if [ "$uch" = "1" ]; then
+        echo "Flattening all subfolders recursively..."
+        find "$path" -mindepth 2 -type f -exec mv -v {} "$path/" \;
+        find "$path" -type d -empty -delete
+        echo "✅ All files brought to current location. Empty folders removed."
+    else
+        if select_items_common "UNORGANISE (folders only)"; then
+            for dir in "${selected_items[@]}"; do
+                [ -d "$dir" ] || continue
+                echo "Unorganising $dir..."
+                find "$dir" -type f -exec mv -v {} "$path/" \;
+                find "$dir" -type d -empty -delete
+            done
+        fi
+    fi
+}
+
+organise_menu() {
+    echo "🗂️ Organise files in current location ($path):"
+    echo "1) Organise by ext"
+    echo "2) Organise by year(s) (metadata)"
+    echo "3) Organise by year(s) > month(s) (metadata)"
+    echo "4) Organise by year(s) > month(s) > date(s) (metadata)"
+    echo "5) Unorganise and bring it to current location"
+    read -p "Enter choice [1-5]: " och
+    case "$och" in
+        1) organise_by_ext ;;
+        2) organise_by_year ;;
+        3) organise_by_year_month ;;
+        4) organise_by_year_month_date ;;
+        5) unorganise ;;
+        *) echo "❌ Invalid choice" ;;
+    esac
+}
+
+# ====================== MAIN LOOP ======================
+
+path=$(pwd)
+move_mode=false
+copy_mode=false
+selected_items=()
+original_path=""
+
+if [ $# -eq 1 ]; then
+    target="$1"
+    if [ -d "$target" ]; then
+        path=$(get_abs_path "$target")
+    elif [ -f "$target" ]; then
+        selected=$(get_abs_path "$target")
+        handle_file "$selected"
+        exit $?
+    else
+        echo "❌ Error: '$target' not found" >&2
+        exit 1
+    fi
+fi
+
+shopt -s nullglob
+while true; do
+    echo
+    if $move_mode; then
+        echo "🚚 MOVE MODE: Select destination folder"
+    elif $copy_mode; then
+        echo "📋 COPY MODE: Select destination folder"
+    else
+        echo "📂 Location: $path"
+    fi
+
+    items=("$path"/*)
+    if [ ${#items[@]} -eq 0 ]; then
+        echo "🛑 This directory is empty"
+    else
+        idx=1
+        for item in "${items[@]}"; do
+            [ -d "$item" ] && icon="📁" || icon="📄"
+            printf "%2d) %s %s\n" "$idx" "\( icon" " \)(basename "$item")"
+            idx=$((idx+1))
+        done
+    fi
+    echo
+
+    if $move_mode || $copy_mode; then
+        echo "c) Confirm   x) Cancel"
+    else
+        echo "u) Up directory   cd) change directory"
+        echo "t) Transfer (move/copy)   d) Delete items   c) Create   f) Find   x) Organise   r) Rename"
+        echo "q/h) Quit/Home"
+    fi
+
+    read -p "Select item number: " choice
+
+    # Mode confirm/cancel
+    if $move_mode; then
+        case "$choice" in
+            c|C)
+                for item in "${selected_items[@]}"; do
+                    mv -v "$item" "$path/"
+                done
+                echo "✅ Items moved successfully"
+                move_mode=false
+                path="$original_path"
+                selected_items=()
+                continue
+                ;;
+            x|X)
+                echo "🚫 Move operation cancelled"
+                move_mode=false
+                path="$original_path"
+                selected_items=()
+                continue
+                ;;
+        esac
+    fi
+
+    if $copy_mode; then
+        case "$choice" in
+            c|C)
+                perform_copy
+                echo "✅ Items copied successfully"
+                copy_mode=false
+                path="$original_path"
+                selected_items=()
+                continue
+                ;;
+            x|X)
+                echo "🚫 Copy operation cancelled"
+                copy_mode=false
+                path="$original_path"
+                selected_items=()
+                continue
+                ;;
+        esac
+    fi
+
+    # Main menu
+    case "$choice" in
+        q|Q|h|H) exit 0 ;;
+        u|U)
+            [ "\( path" != "/" ] && path= \)(dirname "$path")
+            continue
+            ;;
+        c|C)
+            echo "Create:"
+            echo "1) New folders"
+            echo "2) New files"
+            read -p "Choice: " cr
+            [[ "$cr" == "1" ]] && create_dirs
+            [[ "$cr" == "2" ]] && create_files
+            continue
+            ;;
+        t|T)
+            echo "Transfer:"
+            echo "1) Move files/folders"
+            echo "2) Copy files/folders"
+            read -p "Choice: " tr
+            [[ "$tr" == "1" ]] && move_items
+            [[ "$tr" == "2" ]] && initiate_copy
+            continue
+            ;;
+        d|D)
+            delete_items
+            continue
+            ;;
+        f|F)
+            find_menu
+            continue
+            ;;
+        x|X)
+            organise_menu
+            continue
+            ;;
+        r|R)
+            echo "Rename:"
+            echo "1) Select item number to rename (files/folders in current path)"
+            echo "2) Rename current path/folder"
+            read -p "Choice [1-2]: " ren_choice
+            case "$ren_choice" in
+                1)
+                    if [ ${#items[@]} -eq 0 ]; then
+                        echo "❌ No items to rename"
+                    else
+                        read -p "Enter item number: " num
+                        if [[ "\( num" =\~ ^[0-9]+ \) ]] && [ "$num" -ge 1 ] && [ "\( num" -le " \){#items[@]}" ]; then
+                            rename_item "\( {items[ \)((num-1))]}"
+                        else
+                            echo "❌ Invalid number"
+                        fi
+                    fi
+                    ;;
+                2)
+                    rename_item "$path"
+                    ;;
+                *)
+                    echo "❌ Invalid choice"
+                    ;;
+            esac
+            continue
+            ;;
+        cd|CD|cD|Cd)
+            cd "$path" && exec "$SHELL"
+            ;;
+    esac
+
+    if [[ "\( choice" =\~ ^[0-9]+ \) ]] && [ "$choice" -ge 1 ] && [ "\( choice" -le " \){#items[@]}" ]; then
+        selected="\( {items[ \)((choice-1))]}"
+        if [ -d "$selected" ]; then
+            path="$selected"
+        elif [ -f "$selected" ]; then
+            if $move_mode || $copy_mode; then
+                echo "⚠️  Please select a folder for destination"
+            else
+                handle_file "$selected"
+            fi
+        fi
+    else
+        echo "⚠️  Invalid selection"
+    fi
+done
