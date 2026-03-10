@@ -440,8 +440,6 @@ while true; do
             fi
                exec "$SHELL"
             ;;
-continue
-;;
     esac
 
     if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#items[@]}" ]; then
