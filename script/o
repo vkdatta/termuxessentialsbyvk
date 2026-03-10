@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
-source "copyitems.sh"
-source "moveitems.sh"
-source "modemenu.sh"
-
 source "0_state.sh"
 source "1_handlepath.sh"
 source "2u_up.sh"
 source "3nf_handlecreate.sh"
 source "4d_handledelete.sh"
+
+source "copyitems.sh"
+source "moveitems.sh"
+source "modemenu.sh"
 
 source "0_handlefile.sh"
 source "0handlerun.sh"
