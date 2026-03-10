@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source "hello.sh"
+
 handle_file() {
     local file="$1"
     while true; do
@@ -581,7 +583,7 @@ while true; do
     else
         echo "u) Up directory  cd) change directory r) Rename Current Directory"
         echo "m) Move Items  d) Delete items c) Copy items"
-        echo "n) New folders  f) New files  q/h) Quit/Home"
+        echo "n) New folders  f) New files  q/h) Quit/Home g)Greet"
     fi
     read -p "Select item number: " choice
 
@@ -682,6 +684,10 @@ while true; do
             fi
                exec "$SHELL"
             ;;
+g) 
+say_hello
+continue
+;;
     esac
 
     if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#items[@]}" ]; then
