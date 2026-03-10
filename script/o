@@ -563,7 +563,7 @@ while true; do
         echo "📂 Location: $path"
     fi
 
-    items=("$path"/*)
+    items=("$path"/{*,.*})
     if [ ${#items[@]} -eq 0 ]; then
         echo "🛑 This directory is empty"
     else
