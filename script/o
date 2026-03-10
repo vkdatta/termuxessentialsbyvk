@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+while IFS= read -r f; do
+    [[ "$f" == "$SCRIPT_DIR/o" ]] && continue
+    source "$f"
+done < <(find "$SCRIPT_DIR" -type f -name "*.sh")
+
 handle_file() {
     local file="$1"
     while true; do
