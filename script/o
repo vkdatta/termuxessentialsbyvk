@@ -5,7 +5,11 @@ source "0_organise.sh"
 source "0_find.sh"
 source "bashbasicsbyvk_settings.sh"
 
-# ====================== COMMON HELPERS (now fully reusable) ======================
+MAX_ITEMS=200
+force_show=false
+in_group_view=false
+current_group_letter=""
+last_path=""
 
 parse_selection() {
     local input="$1"
@@ -51,8 +55,6 @@ select_items_common() {
     done
     return 0
 }
-
-# ====================== ORIGINAL FUNCTIONS ======================
 
 rename_item() {
     local target="$1"
@@ -185,13 +187,12 @@ perform_copy() {
     done
 }
 
-# ====================== MAIN LOOP ======================
-
 path=$(pwd)
 move_mode=false
 copy_mode=false
 selected_items=()
 original_path=""
+shopt -s nullglob
 
 if [ $# -eq 1 ]; then
     target="$1"
@@ -207,9 +208,14 @@ if [ $# -eq 1 ]; then
     fi
 fi
 
-shopt -s nullglob
 while true; do
     echo
+    if [ "$path" != "$last_path" ]; then
+        force_show=false
+        in_group_view=false
+        current_group_letter=""
+        last_path="$path"
+    fi
     if $move_mode; then
         echo "🚚 MOVE MODE: Select destination folder"
     elif $copy_mode; then
@@ -218,22 +224,104 @@ while true; do
         echo "📂 Location: $path"
     fi
 
-  items=()
+    all_items=()
     if $show_all_types; then
         for f in "$path"/{*,.*}; do
             [ -e "$f" ] || continue
             [[ "$(basename "$f")" == "." || "$(basename "$f")" == ".." ]] && continue
-            items+=("$f")
+            all_items+=("$f")
         done
     else
         for f in "$path"/*; do
             [ -e "$f" ] || continue
-            items+=("$f")
+            all_items+=("$f")
         done
     fi
 
-if [ ${#items[@]} -eq 0 ]; then
+    total=${#all_items[@]}
+
+    if [ $total -eq 0 ]; then
         echo "🛑 This directory is empty"
+        items=()
+    elif (( total > MAX_ITEMS )) && [ "$force_show" != true ] && [ "$in_group_view" != true ]; then
+        declare -A folder_groups
+        declare -A file_groups
+        declare -A folder_counts
+        declare -A file_counts
+        for item in "${all_items[@]}"; do
+            base=$(basename "$item")
+            first_char="${base:0:1}"
+            first_char="${first_char^^}"
+            if [[ ! "$first_char" =~ [A-Z] ]]; then
+                first_char="#"
+            fi
+            if [ -d "$item" ]; then
+                folder_groups[$first_char]+="$item|"
+                folder_counts[$first_char]=$(( ${folder_counts[$first_char]:-0} + 1 ))
+            else
+                file_groups[$first_char]+="$item|"
+                file_counts[$first_char]=$(( ${file_counts[$first_char]:-0} + 1 ))
+            fi
+        done
+        echo "📂 Too many items ($total). Grouped alphabetically."
+        if [ ${#folder_counts[@]} -ne 0 ]; then
+            echo "Folders:"
+            for k in $(printf "%s\n" "${!folder_counts[@]}" | sort); do
+                printf " %s) %d\n" "$k" "${folder_counts[$k]}"
+            done
+        else
+            echo "Folders: none"
+        fi
+        if [ ${#file_counts[@]} -ne 0 ]; then
+            echo "Files:"
+            for k in $(printf "%s\n" "${!file_counts[@]}" | sort); do
+                printf " %s) %d\n" "$k" "${file_counts[$k]}"
+            done
+        else
+            echo "Files: none"
+        fi
+        echo "FORCESHOW) Show all items without grouping"
+        echo "Type a letter to view items starting with that letter"
+        read -p "Select group letter or command: " choice
+        choice_trimmed=$(echo "$choice" | xargs)
+        choice_upper="${choice_trimmed^^}"
+        if [[ "$choice_upper" == "FORCESHOW" ]]; then
+            force_show=true
+            continue
+        fi
+        if [[ "$choice_upper" =~ ^[A-Z]$ || "$choice_upper" == "#" ]]; then
+            in_group_view=true
+            current_group_letter="$choice_upper"
+            items=()
+            if [ -n "${folder_groups[$current_group_letter]}" ]; then
+                IFS='|' read -ra tmp <<< "${folder_groups[$current_group_letter]}"
+                for x in "${tmp[@]}"; do
+                    [ -n "$x" ] && items+=("$x")
+                done
+            fi
+            if [ -n "${file_groups[$current_group_letter]}" ]; then
+                IFS='|' read -ra tmpf <<< "${file_groups[$current_group_letter]}"
+                for x in "${tmpf[@]}"; do
+                    [ -n "$x" ] && items+=("$x")
+                done
+            fi
+            if [ ${#items[@]} -eq 0 ]; then
+                echo "No items for letter '$current_group_letter'"
+                in_group_view=false
+                current_group_letter=""
+                items=()
+                continue
+            fi
+        else
+            echo "⚠️  Invalid selection"
+            continue
+        fi
+    else
+        items=("${all_items[@]}")
+    fi
+
+    if [ ${#items[@]} -eq 0 ]; then
+        :
     else
         idx=1
         for item in "${items[@]}"; do
@@ -242,21 +330,42 @@ if [ ${#items[@]} -eq 0 ]; then
             idx=$((idx+1))
         done
     fi
-    echo
 
+    echo
     if $move_mode || $copy_mode; then
-        echo "c) Confirm   x) Cancel"
+        echo "c) Confirm   x) Cancel   back) Back to groups"
     else
-        echo "u) Up directory   cd) change directory t) Transfer (move/copy)"
-        echo "d) Delete  c) Create   f) Find   x) Organise   r) Rename"
+        if [ "$in_group_view" = true ]; then
+            echo "back) Back to groups"
+        fi
+        echo "u) Up directory   cd) change directory   t) Transfer (move/copy)"
+        echo "d) Delete  c) Create  f) Find  x) Organise  r) Rename"
         echo "q/h) Quit/Home s) Settings"
     fi
 
-    read -p "Select item number: " choice
+    read -p "Select item number or command: " choice
 
-    # Mode confirm/cancel
+    choice_trimmed=$(echo "$choice" | xargs)
+    choice_upper="${choice_trimmed^^}"
+
+    if [[ "$choice_upper" == "FORCESHOW" ]]; then
+        force_show=true
+        in_group_view=false
+        current_group_letter=""
+        continue
+    fi
+
+    if [[ "$choice_upper" == "BACK" || "$choice_upper" == "B" ]]; then
+        if [ "$in_group_view" = true ]; then
+            in_group_view=false
+            current_group_letter=""
+            force_show=false
+            continue
+        fi
+    fi
+
     if $move_mode; then
-        case "$choice" in
+        case "$choice_trimmed" in
             c|C)
                 for item in "${selected_items[@]}"; do
                     mv -v "$item" "$path/"
@@ -265,6 +374,8 @@ if [ ${#items[@]} -eq 0 ]; then
                 move_mode=false
                 path="$original_path"
                 selected_items=()
+                in_group_view=false
+                current_group_letter=""
                 continue
                 ;;
             x|X)
@@ -272,19 +383,23 @@ if [ ${#items[@]} -eq 0 ]; then
                 move_mode=false
                 path="$original_path"
                 selected_items=()
+                in_group_view=false
+                current_group_letter=""
                 continue
                 ;;
         esac
     fi
 
     if $copy_mode; then
-        case "$choice" in
+        case "$choice_trimmed" in
             c|C)
                 perform_copy
                 echo "✅ Items copied successfully"
                 copy_mode=false
                 path="$original_path"
                 selected_items=()
+                in_group_view=false
+                current_group_letter=""
                 continue
                 ;;
             x|X)
@@ -292,20 +407,22 @@ if [ ${#items[@]} -eq 0 ]; then
                 copy_mode=false
                 path="$original_path"
                 selected_items=()
+                in_group_view=false
+                current_group_letter=""
                 continue
                 ;;
         esac
     fi
 
-    # Main menu
-    case "$choice" in
+    case "$choice_trimmed" in
         q|Q|h|H) exit 0 ;;
         u|U)
             [ "$path" != "/" ] && path=$(dirname "$path")
+            in_group_view=false
+            current_group_letter=""
             continue
             ;;
         c|C)
-            echo "Create:"
             echo "1) New folders"
             echo "2) New files"
             read -p "Choice: " cr
@@ -314,7 +431,6 @@ if [ ${#items[@]} -eq 0 ]; then
             continue
             ;;
         t|T)
-            echo "Transfer:"
             echo "1) Move files/folders"
             echo "2) Copy files/folders"
             read -p "Choice: " tr
@@ -339,7 +455,6 @@ if [ ${#items[@]} -eq 0 ]; then
             continue
             ;;
         r|R)
-            echo "Rename:"
             echo "1) Select item number to rename (files/folders in current path)"
             echo "2) Rename current path/folder"
             read -p "Choice [1-2]: " ren_choice
@@ -370,10 +485,12 @@ if [ ${#items[@]} -eq 0 ]; then
             ;;
     esac
 
-    if [[ $choice =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#items[@]}" ]; then
-        selected="${items[$((choice-1))]}"
+    if [[ $choice_trimmed =~ ^[0-9]+$ ]] && [ "$choice_trimmed" -ge 1 ] && [ "$choice_trimmed" -le "${#items[@]}" ]; then
+        selected="${items[$((choice_trimmed-1))]}"
         if [ -d "$selected" ]; then
             path="$selected"
+            in_group_view=false
+            current_group_letter=""
         elif [ -f "$selected" ]; then
             if $move_mode || $copy_mode; then
                 echo "⚠️  Please select a folder for destination"
@@ -382,6 +499,8 @@ if [ ${#items[@]} -eq 0 ]; then
             fi
         fi
     else
-        echo "⚠️  Invalid selection"
+        if [ -n "$choice_trimmed" ]; then
+            echo "⚠️  Invalid selection"
+        fi
     fi
 done
