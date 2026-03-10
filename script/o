@@ -17,13 +17,13 @@ parse_selection() {
     IFS=',' read -ra parts <<< "$input"
     for part in "${parts[@]}"; do
         part=$(echo "$part" | xargs)
-        if [[ \( part =\~ ^([0-9]+)-([0-9]+) \) ]]; then
+        if [[ $part =~ ^([0-9]+)-([0-9]+)$ ]]; then
             local start="${BASH_REMATCH[1]}"
             local end="${BASH_REMATCH[2]}"
             for ((i=start; i<=end && i<=max; i++)); do
                 indices+=("$i")
             done
-        elif [[ \( part =\~ ^[0-9]+ \) ]]; then
+        elif [[ $part =~ ^[0-9]+$ ]]; then
             local num="$part"
             (( num >= 1 && num <= max )) && indices+=("$num")
         fi
@@ -39,10 +39,10 @@ select_items_common() {
     fi
     echo "$prompt (supports ranges: 1-10,15-20,33)"
     read -p "Item numbers: " itemlist
-    local indices=($(parse_selection "\( itemlist" " \){#items[@]}"))
+    local indices=($(parse_selection "$itemlist" "${#items[@]}"))
     selected_items=()
     for idx in "${indices[@]}"; do
-        selected_items+=("\( {items[ \)((idx-1))]}")
+        selected_items+=("${items[$((idx-1))]}")
     done
     if [ ${#selected_items[@]} -eq 0 ]; then
         echo "❌ No valid items selected"
@@ -175,9 +175,9 @@ perform_copy() {
         local newbase="$base"
         while [ -e "$path/$newbase" ]; do
             if [ -n "$ext" ]; then
-                newbase="\( {name}_ \){count}.${ext}"
+                newbase="${name}_${count}.${ext}"
             else
-                newbase="\( {name}_ \){count}"
+                newbase="${name}_${count}"
             fi
             count=$((count+1))
         done
@@ -213,7 +213,7 @@ build_items_for_prefix() {
         shopt -s nullglob dotglob nocaseglob
         for f in $pattern; do
             [ -e "$f" ] || continue
-            [[ "$(basename "\( f")" == "." || " \)(basename "$f")" == ".." ]] && continue
+            [[ "$(basename "$f")" == "." || "$(basename "$f")" == ".." ]] && continue
             items+=("$f")
         done
         shopt -u nullglob dotglob nocaseglob
@@ -223,7 +223,7 @@ build_items_for_prefix() {
             [ -e "$f" ] || continue
             items+=("$f")
         done
-        shopt -u nullglob nocaseglob
+        shopt -u nullglob dotglob nocaseglob
     fi
 }
 
@@ -238,7 +238,7 @@ count_items_for_prefix() {
         else
             shopt -s nullglob nocaseglob
             tmp=("$path/$prefix"*)
-            shopt -u nullglob nocaseglob
+            shopt -u nullglob dotglob nocaseglob
         fi
         echo "${#tmp[@]}"
     else
@@ -263,11 +263,11 @@ get_group_counts() {
         shopt -s nullglob dotglob nocaseglob
         for item in $pattern; do
             [ -e "$item" ] || continue
-            [[ "$(basename "\( item")" == "." || " \)(basename "$item")" == ".." ]] && continue
+            [[ "$(basename "$item")" == "." || "$(basename "$item")" == ".." ]] && continue
             base=$(basename "$item")
-            next_char="\( {base: \){#base_prefix}:1}"
+            next_char="${base:${#base_prefix}:1}"
             next_char="${next_char^^}"
-            [[ ! "$next_char" =\~ [A-Z] ]] && next_char="#"
+            [[ ! "$next_char" =~ [A-Z] ]] && next_char="#"
             if [ -d "$item" ]; then
                 ((folder_counts[$next_char]++))
             else
@@ -280,9 +280,9 @@ get_group_counts() {
         for item in $pattern; do
             [ -e "$item" ] || continue
             base=$(basename "$item")
-            next_char="\( {base: \){#base_prefix}:1}"
+            next_char="${base:${#base_prefix}:1}"
             next_char="${next_char^^}"
-            [[ ! "$next_char" =\~ [A-Z] ]] && next_char="#"
+            [[ ! "$next_char" =~ [A-Z] ]] && next_char="#"
             if [ -d "$item" ]; then
                 ((folder_counts[$next_char]++))
             else
@@ -291,8 +291,8 @@ get_group_counts() {
         done
         shopt -u nullglob nocaseglob
     fi
-    for k in "${!folder_counts[@]}"; do folder_ref[\( k]= \){folder_counts[$k]}; done
-    for k in "${!file_counts[@]}"; do file_ref[\( k]= \){file_counts[$k]}; done
+    for k in "${!folder_counts[@]}"; do folder_ref[$k]=${folder_counts[$k]}; done
+    for k in "${!file_counts[@]}"; do file_ref[$k]=${file_counts[$k]}; done
 }
 
 path=$(pwd)
@@ -346,7 +346,7 @@ while true; do
             idx=1
             for item in "${items[@]}"; do
                 [ -d "$item" ] && icon="📁" || icon="📄"
-                printf "%2d) %s %s\n" "$idx" "\( icon" " \)(basename "$item")"
+                printf "%2d) %s %s\n" "$idx" "$icon" "$(basename "$item")"
                 idx=$((idx+1))
             done
         fi
@@ -354,10 +354,10 @@ while true; do
         declare -A folder_counts file_counts
         get_group_counts "$current_prefix" folder_counts file_counts
         local -A seen=()
-        for k in "\( {!folder_counts[@]}" " \){!file_counts[@]}"; do
+        for k in "${!folder_counts[@]}" "${!file_counts[@]}"; do
             seen["$k"]=1
         done
-        for k in \( (printf '%s\n' " \){!seen[@]}" | sort); do
+        for k in $(printf '%s\n' "${!seen[@]}" | sort); do
             group_keys+=("$k")
         done
         echo "📂 Too many items ($total). Grouped by next character:"
@@ -365,7 +365,7 @@ while true; do
         for k in "${group_keys[@]}"; do
             local fcnt="${folder_counts[$k]:-0}"
             local ficnt="${file_counts[$k]:-0}"
-            printf "%2d) 📁 %s" "\( gidx" " \){current_prefix}${k}"
+            printf "%2d) 📁 %s" "$gidx" "${current_prefix}${k}"
             if (( fcnt > 0 )); then
                 printf " 📁:%d" "$fcnt"
             fi
@@ -441,7 +441,7 @@ while true; do
     case "$choice_trimmed" in
         q|Q|h|H) exit 0 ;;
         u|U)
-            [ "\( path" != "/" ] && path= \)(dirname "$path")
+            [ "$path" != "/" ] && path=$(dirname "$path")
             group_prefix=""
             continue
             ;;
@@ -498,8 +498,8 @@ while true; do
                         echo "❌ No items to rename"
                     else
                         read -p "Enter item number: " num
-                        if [[ \( num =\~ ^[0-9]+ \) ]] && [ "$num" -ge 1 ] && [ "\( num" -le " \){#items[@]}" ]; then
-                            rename_item "\( {items[ \)((num-1))]}"
+                        if [[ $num =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#items[@]}" ]; then
+                            rename_item "${items[$((num-1))]}"
                         else
                             echo "❌ Invalid number"
                         fi
@@ -518,8 +518,8 @@ while true; do
             cd "$path" && exec "$SHELL"
             ;;
     esac
-    if [ ${#items[@]} -gt 0 ] && [[ \( choice_trimmed =\~ ^[0-9]+ \) ]] && [ "$choice_trimmed" -ge 1 ] && [ "\( choice_trimmed" -le " \){#items[@]}" ]; then
-        selected="\( {items[ \)((choice_trimmed-1))]}"
+    if [ ${#items[@]} -gt 0 ] && [[ $choice_trimmed =~ ^[0-9]+$ ]] && [ "$choice_trimmed" -ge 1 ] && [ "$choice_trimmed" -le "${#items[@]}" ]; then
+        selected="${items[$((choice_trimmed-1))]}"
         if [ -d "$selected" ]; then
             path="$selected"
             group_prefix=""
@@ -530,14 +530,14 @@ while true; do
                 handle_file "$selected"
             fi
         fi
-    elif [ ${#group_keys[@]} -gt 0 ] && [[ \( choice_trimmed =\~ ^[0-9]+ \) ]] && [ "$choice_trimmed" -ge 1 ] && [ "\( choice_trimmed" -le " \){#group_keys[@]}" ]; then
-        local selected_group="\( {group_keys[ \)((choice_trimmed-1))]}"
+    elif [ ${#group_keys[@]} -gt 0 ] && [[ $choice_trimmed =~ ^[0-9]+$ ]] && [ "$choice_trimmed" -ge 1 ] && [ "$choice_trimmed" -le "${#group_keys[@]}" ]; then
+        local selected_group="${group_keys[$((choice_trimmed-1))]}"
         if [ -n "$group_prefix" ]; then
             group_prefix+="$selected_group"
         else
             group_prefix="$selected_group"
         fi
-    elif [ ${#items[@]} -eq 0 ] && [[ "\( choice_upper" =\~ ^[A-Z] \) || "$choice_upper" == "#" ]]; then
+    elif [ ${#items[@]} -eq 0 ] && [[ $choice_upper =~ ^[A-Z]$ || "$choice_upper" == "#" ]]; then
         if [ -n "$group_prefix" ]; then
             group_prefix+="$choice_upper"
         else
