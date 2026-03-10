@@ -57,21 +57,25 @@ parse_selection() {
     local -a indices=()
 
     IFS=',' read -ra parts <<< "$input"
-    for part in "${parts[@]}"; do
-        part="\( {part#" \){part%%[![:space:]]*}"}"
-        part="\( {part%" \){part##*[![:space:]]}"}"
 
-        if [[ "\( part" =\~ ^([0-9]+)-([0-9]+) \) ]]; then
+    for part in "${parts[@]}"; do
+        part="${part#"${part%%[![:space:]]*}"}"
+        part="${part%"${part##*[![:space:]]}"}"
+
+        if [[ $part =~ ^([0-9]+)-([0-9]+)$ ]]; then
             local start="${BASH_REMATCH[1]}"
             local end="${BASH_REMATCH[2]}"
+
             for ((i=start; i<=end && i<=max; i++)); do
                 indices+=("$i")
             done
-        elif [[ "\( part" =\~ ^[0-9]+ \) ]]; then
+
+        elif [[ $part =~ ^[0-9]+$ ]]; then
             local num="$part"
             (( num >= 1 && num <= max )) && indices+=("$num")
         fi
     done
+
     echo "${indices[@]}"
 }
 
