@@ -387,7 +387,7 @@ local_arr=()
 if $show_all_types; then
 for f in "$path/${group_prefix}"* "$path"/.${group_prefix}*; do
 [ -e "$f" ] || continue
-local bn; bn=$(basename "$f")
+bn=$(basename "$f")
 [[ "$bn" == "." || "$bn" == ".." ]] && continue
 local_arr+=("$f")
 done
@@ -397,7 +397,7 @@ for f in "$path/${group_prefix}"*; do
 local_arr+=("$f")
 done
 fi
-local pfx_count="${#local_arr[@]}"
+pfx_count="${#local_arr[@]}"
 if [ "$pfx_count" -le 200 ]; then
 imaginary_mode=false
 items=("${local_arr[@]}")
@@ -418,7 +418,7 @@ fi
 if [ ${#items[@]} -eq 0 ]; then
 echo "🛑 This directory is empty"
 else
-local idx=1
+idx=1
 for item in "${items[@]}"; do
 [ -d "$item" ] && icon="📁" || icon="📄"
 printf "%2d) %s %s\n" "$idx" "$icon" "$(basename "$item")"
