@@ -22,6 +22,21 @@ unset terminal_text_color
 : "${terminal_bg_color:=$DEFAULT_TERMINAL_BG_COLOR}"
 : "${terminal_text_color:=$DEFAULT_TERMINAL_TEXT_COLOR}"
 
+apply_colors
+
+_get_rc_file() {
+    local current_shell
+    current_shell="$(basename "${SHELL:-bash}")"
+    case "$current_shell" in
+        zsh)  echo "$HOME/.zshrc" ;;
+        fish) echo "$HOME/.config/fish/config.fish" ;;
+        *)    echo "$HOME/.bashrc" ;;
+    esac
+}
+
+_MARKER_BEGIN="# ── bashbasicsbyvk colors BEGIN ──"
+_MARKER_END="# ── bashbasicsbyvk colors END ──"
+
 _normalize_hex() {
     echo "${1#\#}" | tr '[:lower:]' '[:upper:]'
 }
@@ -50,13 +65,49 @@ apply_colors() {
         read -r r g b <<< "$(_hex_to_rgb "$terminal_text_color")"
         printf "\e[38;2;%d;%d;%dm" "$r" "$g" "$b"
     fi
+    if [ -n "$terminal_bg_color" ] || [ -n "$terminal_text_color" ]; then
+        printf "\e[2J\e[H"
+    fi
 }
 
 reset_colors() {
     printf "\e[0m"
+    printf "\e[2J\e[H"
 }
 
-apply_colors
+_persist_colors_to_rc() {
+    local rc_file
+    rc_file="$(_get_rc_file)"
+    touch "$rc_file"
+    _remove_colors_from_rc
+    local block=""
+    block+="$_MARKER_BEGIN\n"
+    if [ -n "$terminal_bg_color" ] && _valid_hex "$terminal_bg_color"; then
+        read -r r g b <<< "$(_hex_to_rgb "$terminal_bg_color")"
+        block+="printf '\\e[48;2;${r};${g};${b}m'\n"
+    fi
+    if [ -n "$terminal_text_color" ] && _valid_hex "$terminal_text_color"; then
+        read -r r g b <<< "$(_hex_to_rgb "$terminal_text_color")"
+        block+="printf '\\e[38;2;${r};${g};${b}m'\n"
+    fi
+    if [ -n "$terminal_bg_color" ] || [ -n "$terminal_text_color" ]; then
+        block+="printf '\\e[2J\\e[H'\n"
+    fi
+    block+="$_MARKER_END"
+    printf "\n%b\n" "$block" >> "$rc_file"
+}
+
+_remove_colors_from_rc() {
+    local rc_file
+    rc_file="$(_get_rc_file)"
+    [ -f "$rc_file" ] || return
+    local tmp_file="${rc_file}.bbvk_tmp"
+    awk "
+        /^# ── bashbasicsbyvk colors BEGIN ──$/ { skip=1 }
+        !skip { print }
+        /^# ── bashbasicsbyvk colors END ──$/ { skip=0 }
+    " "$rc_file" > "$tmp_file" && mv "$tmp_file" "$rc_file"
+}
 
 settings_menu() {
     echo "⚙️  Settings:"
@@ -101,7 +152,7 @@ hidden_file_settings() {
         3)
             show_hidden_files=$DEFAULT_SHOW_HIDDEN_FILES
             save_settings
-            echo "✅ Hidden file setting restored to default (→ $DEFAULT_SHOW_HIDDEN_FILES)"
+            echo "✅ Restored to default (→ $DEFAULT_SHOW_HIDDEN_FILES)"
             ;;
         0) return ;;
         *) echo "❌ Invalid choice" ;;
@@ -146,8 +197,8 @@ terminal_bg_color_settings() {
     echo "  Current: ${terminal_bg_color:-terminal default}"
     echo "  Default: ${DEFAULT_TERMINAL_BG_COLOR:-terminal default}"
     echo ""
-    echo "1) Set new color (6-digit hex, e.g. #1e1e2e or 1e1e2e)"
-    echo "2) Clear color (use terminal default)"
+    echo "1) Set new color (e.g. #1e1e2e or 1e1e2e)"
+    echo "2) Clear color (restore terminal default)"
     echo "3) Restore default (→ ${DEFAULT_TERMINAL_BG_COLOR:-terminal default})"
     echo "0) Back"
     read -p "Enter choice [0-3]: " b_choice
@@ -157,25 +208,28 @@ terminal_bg_color_settings() {
             if _valid_hex "$input_color"; then
                 terminal_bg_color="$(_normalize_hex "$input_color")"
                 save_settings
+                _persist_colors_to_rc
                 apply_colors
-                echo "✅ Background color set to #$terminal_bg_color"
+                echo "✅ Background set to #$terminal_bg_color — active now and on every new session"
             else
-                echo "❌ Invalid hex color — must be exactly 6 hex digits (e.g. #1e1e2e or 1e1e2e)"
+                echo "❌ Invalid — must be 6 hex digits (e.g. #1e1e2e or 1e1e2e)"
             fi
             ;;
         2)
             terminal_bg_color=""
             save_settings
+            _persist_colors_to_rc
             reset_colors
             apply_colors
-            echo "✅ Background color cleared — using terminal default"
+            echo "✅ Background cleared — using terminal default from next session"
             ;;
         3)
             terminal_bg_color=$DEFAULT_TERMINAL_BG_COLOR
             save_settings
+            _persist_colors_to_rc
             reset_colors
             apply_colors
-            echo "✅ Background color restored to default (→ ${DEFAULT_TERMINAL_BG_COLOR:-terminal default})"
+            echo "✅ Background restored to default (→ ${DEFAULT_TERMINAL_BG_COLOR:-terminal default})"
             ;;
         0) return ;;
         *) echo "❌ Invalid choice" ;;
@@ -188,8 +242,8 @@ terminal_text_color_settings() {
     echo "  Current: ${terminal_text_color:-terminal default}"
     echo "  Default: ${DEFAULT_TERMINAL_TEXT_COLOR:-terminal default}"
     echo ""
-    echo "1) Set new color (6-digit hex, e.g. #cdd6f4 or cdd6f4)"
-    echo "2) Clear color (use terminal default)"
+    echo "1) Set new color (e.g. #cdd6f4 or cdd6f4)"
+    echo "2) Clear color (restore terminal default)"
     echo "3) Restore default (→ ${DEFAULT_TERMINAL_TEXT_COLOR:-terminal default})"
     echo "0) Back"
     read -p "Enter choice [0-3]: " c_choice
@@ -199,22 +253,25 @@ terminal_text_color_settings() {
             if _valid_hex "$input_color"; then
                 terminal_text_color="$(_normalize_hex "$input_color")"
                 save_settings
+                _persist_colors_to_rc
                 apply_colors
-                echo "✅ Text color set to #$terminal_text_color"
+                echo "✅ Text color set to #$terminal_text_color — active now and on every new session"
             else
-                echo "❌ Invalid hex color — must be exactly 6 hex digits (e.g. #cdd6f4 or cdd6f4)"
+                echo "❌ Invalid — must be 6 hex digits (e.g. #cdd6f4 or cdd6f4)"
             fi
             ;;
         2)
             terminal_text_color=""
             save_settings
+            _persist_colors_to_rc
             reset_colors
             apply_colors
-            echo "✅ Text color cleared — using terminal default"
+            echo "✅ Text color cleared — using terminal default from next session"
             ;;
         3)
             terminal_text_color=$DEFAULT_TERMINAL_TEXT_COLOR
             save_settings
+            _persist_colors_to_rc
             reset_colors
             apply_colors
             echo "✅ Text color restored to default (→ ${DEFAULT_TERMINAL_TEXT_COLOR:-terminal default})"
@@ -240,6 +297,7 @@ restore_all_defaults() {
             terminal_bg_color=$DEFAULT_TERMINAL_BG_COLOR
             terminal_text_color=$DEFAULT_TERMINAL_TEXT_COLOR
             save_settings
+            _remove_colors_from_rc
             reset_colors
             apply_colors
             echo "✅ All settings restored to factory defaults"
