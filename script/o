@@ -243,7 +243,7 @@ echo "${#arr[@]}"
 count_items_in_path() {
 local p="$1"
 local total
-if $show_all_types; then
+if $show_hidden_files; then
 local a=("$p"/*)
 local b=("$p"/.*)
 local count_a="${#a[@]}"
@@ -268,7 +268,7 @@ build_items_for_prefix() {
 local p="$1"
 local pfx="$2"
 items=()
-if $show_all_types; then
+if $show_hidden_files; then
 for f in "$p/${pfx}"* "$p"/.${pfx}*; do
 [ -e "$f" ] || continue
 local bn; bn=$(basename "$f")
@@ -286,7 +286,7 @@ fi
 build_all_items() {
 local p="$1"
 items=()
-if $show_all_types; then
+if $show_hidden_files; then
 for f in "$p"/* "$p"/.*; do
 [ -e "$f" ] || continue
 local bn; bn=$(basename "$f")
@@ -310,10 +310,10 @@ local -A _seen_chars=()
 local -a all_entries=()
 if [ -n "$pfx" ]; then
 all_entries=("$p/${pfx}"*)
-$show_all_types && all_entries+=("$p"/.${pfx}*)
+$show_hidden_files && all_entries+=("$p"/.${pfx}*)
 else
 all_entries=("$p"/*)
-$show_all_types && {
+$show_hidden_files && {
 local _hidden=("$p"/.*)
 for _h in "${_hidden[@]}"; do
 local _hb="${_h##*/}"
@@ -402,7 +402,7 @@ if [ "$total" -gt "${imaginary_threshold:-200}" ] && ! $force_show; then
 imaginary_mode=true
 if [ -n "$group_prefix" ]; then
 local_arr=()
-if $show_all_types; then
+if $show_hidden_files; then
 for f in "$path/${group_prefix}"* "$path"/.${group_prefix}*; do
 [ -e "$f" ] || continue
 bn=$(basename "$f")
