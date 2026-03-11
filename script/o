@@ -1,11 +1,5 @@
 #!/usr/bin/env bash
 
-source "copy"
-source "erase"
-source "overwrite"
-source "delete"
-source "create"
-source "open"
 source "0_run.sh"
 source "0_organise.sh"
 source "0_find.sh"
