@@ -138,7 +138,7 @@ hidden_file_settings() {
     read -p "Enter choice [0-3]: " s_choice
     case "$s_choice" in
         1) show_hidden_files=false; save_settings; echo "✅ Now showing normal files only" ;;
-        2) show_hidden_files=true;  save_settings; echo "✅ Now showing all files including hidden" ;;
+        2) show_hidden_files=true; save_settings; echo "✅ Now showing all files including hidden" ;;
         3) show_hidden_files=$DEFAULT_SHOW_HIDDEN_FILES; save_settings; echo "✅ Restored to default (→ $DEFAULT_SHOW_HIDDEN_FILES)" ;;
         0) return ;;
         *) echo "❌ Invalid choice" ;;
@@ -148,6 +148,7 @@ hidden_file_settings() {
 index_mode_threshold_settings() {
     echo ""
     echo "🗂️  Index mode threshold:"
+    echo "  Use index-based sorting if files/folders in path exceed this number."
     echo "  Current: $index_mode_threshold"
     echo "  Default: $DEFAULT_INDEX_MODE_THRESHOLD"
     echo ""
@@ -194,8 +195,8 @@ terminal_bg_color_settings() {
                 echo "❌ Invalid — must be 6 hex digits (e.g. #1e1e2e or 1e1e2e)"
             fi
             ;;
-        2) terminal_bg_color=""; save_settings; _persist_colors_to_rc; reset_colors; apply_colors; echo "✅ Background cleared" ;;
-        3) terminal_bg_color=$DEFAULT_TERMINAL_BG_COLOR; save_settings; _persist_colors_to_rc; reset_colors; apply_colors; echo "✅ Restored to default" ;;
+        2) terminal_bg_color=""; save_settings; _persist_colors_to_rc; reset_colors; apply_colors; echo "✅ Background cleared — using terminal default" ;;
+        3) terminal_bg_color=$DEFAULT_TERMINAL_BG_COLOR; save_settings; _persist_colors_to_rc; reset_colors; apply_colors; echo "✅ Restored to default (→ ${DEFAULT_TERMINAL_BG_COLOR:-terminal default})" ;;
         0) return ;;
         *) echo "❌ Invalid choice" ;;
     esac
@@ -223,8 +224,8 @@ terminal_text_color_settings() {
                 echo "❌ Invalid — must be 6 hex digits (e.g. #cdd6f4 or cdd6f4)"
             fi
             ;;
-        2) terminal_text_color=""; save_settings; _persist_colors_to_rc; reset_colors; apply_colors; echo "✅ Text color cleared" ;;
-        3) terminal_text_color=$DEFAULT_TERMINAL_TEXT_COLOR; save_settings; _persist_colors_to_rc; reset_colors; apply_colors; echo "✅ Restored to default" ;;
+        2) terminal_text_color=""; save_settings; _persist_colors_to_rc; reset_colors; apply_colors; echo "✅ Text color cleared — using terminal default" ;;
+        3) terminal_text_color=$DEFAULT_TERMINAL_TEXT_COLOR; save_settings; _persist_colors_to_rc; reset_colors; apply_colors; echo "✅ Restored to default (→ ${DEFAULT_TERMINAL_TEXT_COLOR:-terminal default})" ;;
         0) return ;;
         *) echo "❌ Invalid choice" ;;
     esac
@@ -248,7 +249,6 @@ restore_all_defaults() {
             save_settings
             _remove_colors_from_rc
             reset_colors
-            apply_colors
             echo "✅ All settings restored to factory defaults"
             ;;
         *) echo "↩️  Cancelled — no changes made" ;;
