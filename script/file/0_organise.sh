@@ -17,19 +17,22 @@ _YMD_Y=$y _YMD_M=$m _YMD_D=$d
 _batch_stat() {
 local p="$1"
 declare -gA _FILE_TS=()
-local line fname ts
 while IFS='|' read -r fname ts; do
 [ -f "$fname" ] || continue
 _FILE_TS["$fname"]=$ts
 done < <(stat -c "%n|%Y" "$p"/* 2>/dev/null)
 }
 
-_bulk_move() {
-local dest="$1"; shift
-local -a srcs=("$@")
-[ ${#srcs[@]} -eq 0 ] && return
+_flush_buckets() {
+local -n _bkts="$1"
+for dest in "${!_bkts[@]}"; do
 mkdir -p "$dest"
-mv "${srcs[@]}" "$dest/"
+local -a batch=()
+while IFS= read -r item; do
+[ -n "$item" ] && batch+=("$item")
+done <<< "${_bkts[$dest]}"
+[ ${#batch[@]} -gt 0 ] && mv "${batch[@]}" "$dest/"
+done
 }
 
 organise_by_ext() {
@@ -40,39 +43,36 @@ read -p "Choice: " ech
 local -a files=()
 for f in "$path"/*; do [ -f "$f" ] && files+=("$f"); done
 [ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
-declare -A ext_buckets=()
 case "$ech" in
 1)
+declare -A ext_buckets=()
 for f in "${files[@]}"; do
 local b="${f##*/}"
 local e="${b##*.}"
 [ "$e" = "$b" ] && e="noext"
-ext_buckets["$e"]+="$f"$'\x00'
+ext_buckets["$path/...$e"]+="$f"$'\n'
 done
-for e in "${!ext_buckets[@]}"; do
-local folder="$path/...$e"
-local -a bucket=()
-while IFS= read -r -d $'\x00' item; do
-[ -n "$item" ] && bucket+=("$item")
-done <<< "${ext_buckets[$e]}"
-_bulk_move "$folder" "${bucket[@]}"
-done
+_flush_buckets ext_buckets
 ;;
 2)
 read -p "Extension (e.g. py or .py): " inputext
 local ext="${inputext#.}"
 [ -z "$ext" ] && ext="noext"
 local folder="$path/...$ext"
-local -a bucket=()
+local -a batch=()
 if [ "$ext" = "noext" ]; then
 for f in "${files[@]}"; do
-local b="${f##*/}"
-[[ "$b" != *.* ]] && bucket+=("$f")
+local b="${f##*/}"; [[ "$b" != *.* ]] && batch+=("$f")
 done
 else
-for f in "$path"/*."$ext"; do [ -f "$f" ] && bucket+=("$f"); done
+for f in "${files[@]}"; do
+[[ "${f##*.}" == "$ext" ]] && batch+=("$f")
+done
 fi
-_bulk_move "$folder" "${bucket[@]}"
+if [ ${#batch[@]} -gt 0 ]; then
+mkdir -p "$folder"
+mv "${batch[@]}" "$folder/"
+fi
 ;;
 esac
 echo "✅ Organised by extension"
@@ -87,18 +87,14 @@ read -p "Number of years to group (1 = each year separate): " group_y
 _batch_stat "$path"
 local min_y=99999 max_y=0
 for f in "${files[@]}"; do
-local ts="${_FILE_TS[$f]:-0}"
-_ts_to_ymd "$ts"
-local y=$_YMD_Y
-(( y < min_y )) && min_y=$y
-(( y > max_y )) && max_y=$y
+_ts_to_ymd "${_FILE_TS[$f]:-0}"
+(( _YMD_Y < min_y )) && min_y=$_YMD_Y
+(( _YMD_Y > max_y )) && max_y=$_YMD_Y
 done
-declare -A year_buckets=()
+declare -A buckets=()
 for f in "${files[@]}"; do
-local ts="${_FILE_TS[$f]:-0}"
-_ts_to_ymd "$ts"
-local y=$_YMD_Y
-local dest
+_ts_to_ymd "${_FILE_TS[$f]:-0}"
+local y=$_YMD_Y dest
 if [ "$group_y" -eq 1 ]; then
 dest="$path/...$y"
 else
@@ -108,15 +104,9 @@ local gend=$(( gstart + group_y - 1 ))
 [ $gend -gt $max_y ] && gend=$max_y
 dest="$path/...${gstart}-${gend}/...$y"
 fi
-year_buckets["$dest"]+="$f"$'\x00'
+buckets["$dest"]+="$f"$'\n'
 done
-for dest in "${!year_buckets[@]}"; do
-local -a bucket=()
-while IFS= read -r -d $'\x00' item; do
-[ -n "$item" ] && bucket+=("$item")
-done <<< "${year_buckets[$dest]}"
-_bulk_move "$dest" "${bucket[@]}"
-done
+_flush_buckets buckets
 echo "✅ Organised by year(s)"
 }
 
@@ -151,25 +141,19 @@ local gend=$(( gstart + group_y - 1 ))
 year_dest="$path/...${gstart}-${gend}/...$y"
 fi
 local mname="${month_abbr[$((m-1))]}"
-local month_dest
+local dest
 if [ "$group_m" -eq 1 ]; then
-month_dest="$year_dest/...$mname"
+dest="$year_dest/...$mname"
 else
 local mgi=$(( (m-1) / group_m ))
 local mstart=$(( mgi * group_m + 1 ))
 local mend=$(( mstart + group_m - 1 ))
 [ $mend -gt 12 ] && mend=12
-month_dest="$year_dest/...${month_abbr[$((mstart-1))]}-${month_abbr[$((mend-1))]}/...$mname"
+dest="$year_dest/...${month_abbr[$((mstart-1))]}-${month_abbr[$((mend-1))]}/...$mname"
 fi
-buckets["$month_dest"]+="$f"$'\x00'
+buckets["$dest"]+="$f"$'\n'
 done
-for dest in "${!buckets[@]}"; do
-local -a bucket=()
-while IFS= read -r -d $'\x00' item; do
-[ -n "$item" ] && bucket+=("$item")
-done <<< "${buckets[$dest]}"
-_bulk_move "$dest" "${bucket[@]}"
-done
+_flush_buckets buckets
 echo "✅ Organised by year(s) > month(s)"
 }
 
@@ -216,25 +200,19 @@ local mend=$(( mstart + group_m - 1 ))
 [ $mend -gt 12 ] && mend=12
 month_dest="$year_dest/...${month_abbr[$((mstart-1))]}-${month_abbr[$((mend-1))]}/...$mname"
 fi
-local day_dest
+local dest
 if [ "$group_d" -eq 1 ]; then
-day_dest="$month_dest/...$d"
+dest="$month_dest/...$d"
 else
 local dgi=$(( (d-1) / group_d ))
 local dstart=$(( dgi * group_d + 1 ))
 local dend=$(( dstart + group_d - 1 ))
 [ $dend -gt 31 ] && dend=31
-day_dest="$month_dest/...${dstart}-${dend}/...$d"
+dest="$month_dest/...${dstart}-${dend}/...$d"
 fi
-buckets["$day_dest"]+="$f"$'\x00'
+buckets["$dest"]+="$f"$'\n'
 done
-for dest in "${!buckets[@]}"; do
-local -a bucket=()
-while IFS= read -r -d $'\x00' item; do
-[ -n "$item" ] && bucket+=("$item")
-done <<< "${buckets[$dest]}"
-_bulk_move "$dest" "${bucket[@]}"
-done
+_flush_buckets buckets
 echo "✅ Organised by year(s) > month(s) > date(s)"
 }
 
