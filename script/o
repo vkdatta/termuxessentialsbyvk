@@ -188,42 +188,9 @@ perform_copy() {
 
 fast_count() {
     if $show_all_types; then
-        shopt -s nullglob dotglob nocaseglob
-        local -a tmp=("$path"/*)
-        shopt -u nullglob dotglob nocaseglob
-        echo "${#tmp[@]}"
+        find "$path" -maxdepth 1 \( -name ".*" -o -name "*" \) ! -name "." ! -name ".." -print 2>/dev/null | wc -l
     else
-        shopt -s nullglob nocaseglob
-        local -a tmp=("$path"/*)
-        shopt -u nullglob nocaseglob
-        echo "${#tmp[@]}"
-    fi
-}
-
-build_items_for_prefix() {
-    local prefix="$1"
-    local pattern
-    items=()
-    if [ -n "$prefix" ]; then
-        pattern="$path/$prefix*"
-    else
-        pattern="$path/*"
-    fi
-    if $show_all_types; then
-        shopt -s nullglob dotglob nocaseglob
-        for f in $pattern; do
-            [ -e "$f" ] || continue
-            [[ "$(basename "$f")" == "." || "$(basename "$f")" == ".." ]] && continue
-            items+=("$f")
-        done
-        shopt -u nullglob dotglob nocaseglob
-    else
-        shopt -s nullglob nocaseglob
-        for f in $pattern; do
-            [ -e "$f" ] || continue
-            items+=("$f")
-        done
-        shopt -u nullglob nocaseglob
+        find "$path" -maxdepth 1 ! -name ".*" ! -name "." ! -name ".." -print 2>/dev/null | wc -l
     fi
 }
 
@@ -231,19 +198,124 @@ count_items_for_prefix() {
     local prefix="$1"
     if [ -n "$prefix" ]; then
         if $show_all_types; then
-            shopt -s nullglob dotglob nocaseglob
-            local -a tmp=("$path/$prefix"*)
-            shopt -u nullglob dotglob nocaseglob
-            echo "${#tmp[@]}"
+            find "$path" -maxdepth 1 \( -iname "${prefix}*" -o -iname ".${prefix}*" \) ! -name "." ! -name ".." -print 2>/dev/null | wc -l
         else
-            shopt -s nullglob nocaseglob
-            local -a tmp=("$path/$prefix"*)
-            shopt -u nullglob nocaseglob
-            echo "${#tmp[@]}"
+            find "$path" -maxdepth 1 -iname "${prefix}*" ! -name ".*" -print 2>/dev/null | wc -l
         fi
     else
         fast_count
     fi
+}
+
+build_items_for_prefix() {
+    local prefix="$1"
+    items=()
+    if $show_all_types; then
+        shopt -s nullglob dotglob nocaseglob
+        if [ -n "$prefix" ]; then
+            for f in "$path"/${prefix}* "$path"/.${prefix}*; do
+                [ -e "$f" ] || continue
+                [[ "$(basename "$f")" == "." || "$(basename "$f")" == ".." ]] && continue
+                items+=("$f")
+            done
+        else
+            for f in "$path"/* "$path"/.*; do
+                [ -e "$f" ] || continue
+                [[ "$(basename "$f")" == "." || "$(basename "$f")" == ".." ]] && continue
+                items+=("$f")
+            done
+        fi
+        shopt -u nullglob dotglob nocaseglob
+    else
+        shopt -s nullglob nocaseglob
+        if [ -n "$prefix" ]; then
+            for f in "$path"/${prefix}*; do
+                [ -e "$f" ] || continue
+                items+=("$f")
+            done
+        else
+            for f in "$path"/*; do
+                [ -e "$f" ] || continue
+                items+=("$f")
+            done
+        fi
+        shopt -u nullglob nocaseglob
+    fi
+}
+
+get_group_counts() {
+    local base_prefix="$1"
+    local -n folder_ref=$2
+    local -n file_ref=$3
+    folder_ref=()
+    file_ref=()
+    local -A folder_counts file_counts
+    local item base next_char
+    if $show_all_types; then
+        shopt -s nullglob dotglob nocaseglob
+        if [ -n "$base_prefix" ]; then
+            for item in "$path"/${base_prefix}* "$path"/.${base_prefix}*; do
+                [ -e "$item" ] || continue
+                [[ "$(basename "$item")" == "." || "$(basename "$item")" == ".." ]] && continue
+                base=$(basename "$item")
+                next_char="${base:${#base_prefix}:1}"
+                next_char="${next_char^^}"
+                [[ ! "$next_char" =~ [A-Z] ]] && next_char="#"
+                if [ -d "$item" ]; then
+                    ((folder_counts[$next_char]++))
+                else
+                    ((file_counts[$next_char]++))
+                fi
+            done
+        else
+            for item in "$path"/* "$path"/.*; do
+                [ -e "$item" ] || continue
+                [[ "$(basename "$item")" == "." || "$(basename "$item")" == ".." ]] && continue
+                base=$(basename "$item")
+                next_char="${base:0:1}"
+                next_char="${next_char^^}"
+                [[ ! "$next_char" =~ [A-Z] ]] && next_char="#"
+                if [ -d "$item" ]; then
+                    ((folder_counts[$next_char]++))
+                else
+                    ((file_counts[$next_char]++))
+                fi
+            done
+        fi
+        shopt -u nullglob dotglob nocaseglob
+    else
+        shopt -s nullglob nocaseglob
+        if [ -n "$base_prefix" ]; then
+            for item in "$path"/${base_prefix}*; do
+                [ -e "$item" ] || continue
+                base=$(basename "$item")
+                next_char="${base:${#base_prefix}:1}"
+                next_char="${next_char^^}"
+                [[ ! "$next_char" =~ [A-Z] ]] && next_char="#"
+                if [ -d "$item" ]; then
+                    ((folder_counts[$next_char]++))
+                else
+                    ((file_counts[$next_char]++))
+                fi
+            done
+        else
+            for item in "$path"/*; do
+                [ -e "$item" ] || continue
+                base=$(basename "$item")
+                next_char="${base:0:1}"
+                next_char="${next_char^^}"
+                [[ ! "$next_char" =~ [A-Z] ]] && next_char="#"
+                if [ -d "$item" ]; then
+                    ((folder_counts[$next_char]++))
+                else
+                    ((file_counts[$next_char]++))
+                fi
+            done
+        fi
+        shopt -u nullglob nocaseglob
+    fi
+    for k in "${!folder_counts[@]}"; do folder_ref[$k]=${folder_counts[$k]}; done
+    for k in "${!file_counts[@]}"; do file_ref[$k]=${file_counts[$k]}; done
 }
 
 path=$(pwd)
@@ -269,11 +341,13 @@ fi
 
 while true; do
     echo
+
     if [ "$path" != "$last_path" ]; then
         force_show=false
         group_prefix=""
         last_path="$path"
     fi
+
     if $move_mode; then
         echo "🚚 MOVE MODE: Select destination folder"
     elif $copy_mode; then
@@ -281,11 +355,11 @@ while true; do
     else
         echo "📂 Location: $path"
     fi
-    current_prefix="${group_prefix}"
+
+    current_prefix="$group_prefix"
     total=$(count_items_for_prefix "$current_prefix")
-    items=()
-    group_chars=()
-    if [ -n "$current_prefix" ] || [ "$force_show" = true ] || (( total <= MAX_ITEMS )); then
+
+    if [ "$force_show" = true ] || (( total <= MAX_ITEMS )); then
         build_items_for_prefix "$current_prefix"
         if [ ${#items[@]} -eq 0 ]; then
             echo "🛑 No items match this filter"
@@ -298,56 +372,48 @@ while true; do
             done
         fi
     else
-        declare -A next_counts
-        pattern="$path/*"
+        items=()
+        declare -A folder_counts file_counts
+        get_group_counts "$current_prefix" folder_counts file_counts
         if [ -n "$current_prefix" ]; then
-            pattern="$path/$current_prefix*"
-        fi
-        if $show_all_types; then
-            shopt -s nullglob dotglob nocaseglob
+            echo "📂 Too many items ($total) starting with '$current_prefix'. Drill down further:"
         else
-            shopt -s nullglob nocaseglob
+            echo "📂 Too many items ($total). Grouped by first letter:"
         fi
-        for f in $pattern; do
-            [ -e "$f" ] || continue
-            base=$(basename -- "$f")
-            [[ "$base" == "." || "$base" == ".." ]] && continue
-            len=${#current_prefix}
-            next_char="${base:$len:1}"
-            next_char="${next_char^^}"
-            [[ ! "$next_char" =~ [A-Z] ]] && next_char="#"
-            ((next_counts[$next_char]++))
-        done
-        shopt -u nullglob dotglob nocaseglob
-        group_chars=()
-        for k in $(printf '%s\n' "${!next_counts[@]}" | sort); do
-            group_chars+=("$k")
-        done
-        echo "📂 Too many items ($total). Imaginary groups by next character:"
-        for i in "${!group_chars[@]}"; do
-            char="${group_chars[$i]}"
-            cnt="${next_counts[$char]}"
-            printf "%2d) 📁 %s%s (%d items)\n" "$((i+1))" "$current_prefix" "$char" "$cnt"
-        done
-        echo "Type letter or select number to drill down"
+        if [ ${#folder_counts[@]} -ne 0 ]; then
+            echo "Folders:"
+            for k in $(printf "%s\n" "${!folder_counts[@]}" | sort); do
+                printf "  [%s]  %d folders\n" "${current_prefix}${k}" "${folder_counts[$k]}"
+            done
+        fi
+        if [ ${#file_counts[@]} -ne 0 ]; then
+            echo "Files:"
+            for k in $(printf "%s\n" "${!file_counts[@]}" | sort); do
+                printf "  [%s]  %d files\n" "${current_prefix}${k}" "${file_counts[$k]}"
+            done
+        fi
+        echo "Type a letter to drill down"
+        unset folder_counts file_counts
     fi
+
     echo
     if $move_mode || $copy_mode; then
         echo "c) Confirm   x) Cancel"
     else
-        if [ -n "$group_prefix" ]; then
-            echo "back) Back to previous group"
-        fi
-        echo "u) Up directory   cd) change directory   t) Transfer (move/copy)"
+        [ -n "$group_prefix" ] && echo "back) Back to previous group"
+        echo "u) Up directory   cd) Change directory   t) Transfer (move/copy)"
         echo "d) Delete  c) Create  f) Find  x) Organise  r) Rename"
-        echo "q/h) Quit/Home s) Settings"
+        echo "q/h) Quit/Home   s) Settings"
         if [ -z "$group_prefix" ] && (( total > MAX_ITEMS )) && [ "$force_show" != true ]; then
             echo "forceshow) Show all items (may be slow)"
         fi
     fi
+
     read -p "Select item number or command: " choice
+
     choice_trimmed=$(echo "$choice" | xargs)
     choice_upper="${choice_trimmed^^}"
+
     if $move_mode; then
         case "$choice_trimmed" in
             c|C)
@@ -371,6 +437,7 @@ while true; do
                 ;;
         esac
     fi
+
     if $copy_mode; then
         case "$choice_trimmed" in
             c|C)
@@ -392,6 +459,7 @@ while true; do
                 ;;
         esac
     fi
+
     case "$choice_trimmed" in
         q|Q|h|H) exit 0 ;;
         u|U)
@@ -472,7 +540,9 @@ while true; do
             cd "$path" && exec "$SHELL"
             ;;
     esac
-    if [ ${#items[@]} -gt 0 ] && [[ $choice_trimmed =~ ^[0-9]+$ ]] && [ "$choice_trimmed" -ge 1 ] && [ "$choice_trimmed" -le "${#items[@]}" ]; then
+
+    if [ ${#items[@]} -gt 0 ] && [[ $choice_trimmed =~ ^[0-9]+$ ]] && \
+       [ "$choice_trimmed" -ge 1 ] && [ "$choice_trimmed" -le "${#items[@]}" ]; then
         selected="${items[$((choice_trimmed-1))]}"
         if [ -d "$selected" ]; then
             path="$selected"
@@ -484,14 +554,10 @@ while true; do
                 handle_file "$selected"
             fi
         fi
-    elif [ ${#group_chars[@]} -gt 0 ] && [[ $choice_trimmed =~ ^[0-9]+$ ]] && [ "$choice_trimmed" -ge 1 ] && [ "$choice_trimmed" -le "${#group_chars[@]}" ]; then
-        selected_char="${group_chars[$((choice_trimmed-1))]}"
-        group_prefix="${group_prefix}${selected_char}"
-    elif [ ${#items[@]} -eq 0 ] && [[ $choice_upper =~ ^[A-Z]$ || "$choice_upper" == "#" ]]; then
-        group_prefix="${group_prefix}${choice_upper}"
+    elif [ ${#items[@]} -eq 0 ] && [[ "$choice_upper" =~ ^[A-Z]$ || "$choice_upper" == "#" ]]; then
+        group_prefix+="$choice_upper"
     else
-        if [ -n "$choice_trimmed" ]; then
-            echo "⚠️  Invalid selection"
-        fi
+        [ -n "$choice_trimmed" ] && echo "⚠️  Invalid selection"
     fi
+
 done
