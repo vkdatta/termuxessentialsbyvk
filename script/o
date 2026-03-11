@@ -110,18 +110,15 @@ fi
 
 delete_items() {
 if select_items_common "DELETE"; then
-echo "⚠️  WARNING: You are about to delete the following items:"
-for item in "${selected_items[@]}"; do
-echo "- $(basename "$item")"
-done
-read -p "Are you sure? This cannot be undone. (y/n): " confirm
+read -p "Are you really sure you want to delete the selected files? This action can't be undone. (y/n): " confirm
 if [[ $confirm != "y" && $confirm != "Y" ]]; then
 echo "🚫 Deletion cancelled"
 return
 fi
 for item in "${selected_items[@]}"; do
-rm -rf -- "$item" && echo "🗑️  Deleted: $(basename "$item")"
+rm -rf -- "$item"
 done
+echo "✅ Selected items deleted. I can feel the space 🚀"
 fi
 }
 
@@ -177,7 +174,6 @@ fi
 count=$((count+1))
 done
 cp -r -- "$item" "$path/$newbase"
-echo "📋 Copied: $(basename "$item") → $newbase"
 done
 }
 
@@ -378,18 +374,15 @@ if [ "${#unique[@]}" -eq 0 ]; then
 echo "❌ No items found for selected groups"
 return
 fi
-echo "⚠️  WARNING: About to delete ${#unique[@]} item(s):"
-for f in "${unique[@]}"; do
-echo "   - $(basename "$f")"
-done
-read -p "Are you sure? This cannot be undone. (y/n): " confirm
+read -p "Are you really sure you want to delete the selected files? This action can't be undone. (y/n): " confirm
 if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
 echo "🚫 Deletion cancelled"
 return
 fi
 for f in "${unique[@]}"; do
-rm -rf -- "$f" && echo "🗑️  Deleted: $(basename "$f")"
+rm -rf -- "$f"
 done
+echo "✅ Selected items deleted. I can feel the space 🚀"
 }
 
 path=$(pwd)
@@ -495,10 +488,11 @@ read -p "Select: " choice
 if $move_mode; then
 case "$choice" in
 c|C)
+_move_dest="$path"
 for item in "${selected_items[@]}"; do
-mv -v "$item" "$path/"
+mv "$item" "$path/"
 done
-echo "✅ Items moved successfully"
+echo "✅ All files moved from $original_path → $_move_dest"
 move_mode=false
 path="$original_path"
 selected_items=()
@@ -521,8 +515,9 @@ fi
 if $copy_mode; then
 case "$choice" in
 c|C)
+_copy_dest="$path"
 perform_copy
-echo "✅ Items copied successfully"
+echo "✅ All files copied from $original_path → $_copy_dest"
 copy_mode=false
 path="$original_path"
 selected_items=()
