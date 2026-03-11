@@ -56,10 +56,12 @@ reset_colors() {
     printf "\e[0m"
 }
 
+apply_colors
+
 settings_menu() {
     echo "⚙️  Settings:"
-    echo "1) Hidden file settings     (current: $show_hidden_files)"
-    echo "2) Index mode threshold     (current: $index_mode_threshold)"
+    echo "1) Hidden file settings      (current: $show_hidden_files)"
+    echo "2) Index mode threshold      (current: $index_mode_threshold)"
     echo "3) Terminal background color (current: ${terminal_bg_color:-terminal default})"
     echo "4) Terminal text color       (current: ${terminal_text_color:-terminal default})"
     echo "5) Restore ALL settings to default"
@@ -225,10 +227,10 @@ terminal_text_color_settings() {
 restore_all_defaults() {
     echo ""
     echo "⚠️  This will reset ALL settings to factory defaults:"
-    echo "  show_hidden_files   → $DEFAULT_SHOW_HIDDEN_FILES"
+    echo "  show_hidden_files    → $DEFAULT_SHOW_HIDDEN_FILES"
     echo "  index_mode_threshold → $DEFAULT_INDEX_MODE_THRESHOLD"
-    echo "  terminal_bg_color   → ${DEFAULT_TERMINAL_BG_COLOR:-terminal default}"
-    echo "  terminal_text_color → ${DEFAULT_TERMINAL_TEXT_COLOR:-terminal default}"
+    echo "  terminal_bg_color    → ${DEFAULT_TERMINAL_BG_COLOR:-terminal default}"
+    echo "  terminal_text_color  → ${DEFAULT_TERMINAL_TEXT_COLOR:-terminal default}"
     echo ""
     read -p "Are you sure? [y/N]: " confirm
     case "$confirm" in
