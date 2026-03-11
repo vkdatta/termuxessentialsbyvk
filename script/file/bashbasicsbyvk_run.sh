@@ -31,7 +31,7 @@ handle_file() {
                 return 1
                 ;;
             3)
-                copy "$file"
+                bashbasicsbyvk_copy "$file"
                 return 1
                 ;;
             4)
