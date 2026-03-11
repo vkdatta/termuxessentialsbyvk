@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-source "0_run.sh"
-source "0_organise.sh"
-source "0_find.sh"
+source "bashbasicsbyvk_run.sh"
+source "bashbasicsbyvk_organise.sh"
+source "bashbasicsbyvk_find.sh"
 source "bashbasicsbyvk_settings.sh"
 
 parse_selection() {
