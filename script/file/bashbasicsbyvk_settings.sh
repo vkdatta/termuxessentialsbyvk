@@ -6,13 +6,16 @@ SETTINGS_FILE="$SCRIPT_HOME/bashbasicsbyvk.cfg"
 [ -f "$SETTINGS_FILE" ] && source "$SETTINGS_FILE"
 
 : "${show_all_types:=false}"
+: "${imaginary_threshold:=200}"
 
 settings_menu() {
     echo "⚙️ Settings:"
     echo "1) Hidden file settings"
-    read -p "Enter choice [1]: " main_choice
+    echo "2) Imaginary mode threshold"
+    read -p "Enter choice [1-2]: " main_choice
     case "$main_choice" in
         1) hidden_file_settings ;;
+        2) imaginary_threshold_settings ;;
         *) echo "❌ Invalid choice" ;;
     esac
 }
@@ -28,6 +31,27 @@ hidden_file_settings() {
         *) echo "❌ Invalid choice"; return ;;
     esac
 
-    echo "show_all_types=$show_all_types" > "$SETTINGS_FILE"
+    save_settings
     echo "✅ Hidden file setting saved and persistent"
+}
+
+imaginary_threshold_settings() {
+    echo "🗂️ Imaginary mode threshold:"
+    echo "Use index-based sorting if number of files/folders in path exceeds a number."
+    echo "Current: $imaginary_threshold"
+    read -p "Enter new threshold number: " new_threshold
+    if [[ "$new_threshold" =~ ^[0-9]+$ ]] && [ "$new_threshold" -gt 0 ]; then
+        imaginary_threshold=$new_threshold
+        save_settings
+        echo "✅ Threshold set to $imaginary_threshold and saved"
+    else
+        echo "❌ Invalid number. Must be a positive integer."
+    fi
+}
+
+save_settings() {
+    {
+        echo "show_all_types=$show_all_types"
+        echo "imaginary_threshold=$imaginary_threshold"
+    } > "$SETTINGS_FILE"
 }
