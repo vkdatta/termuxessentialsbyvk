@@ -22,8 +22,6 @@ unset terminal_text_color
 : "${terminal_bg_color:=$DEFAULT_TERMINAL_BG_COLOR}"
 : "${terminal_text_color:=$DEFAULT_TERMINAL_TEXT_COLOR}"
 
-apply_colors
-
 _get_rc_file() {
     local current_shell
     current_shell="$(basename "${SHELL:-bash}")"
@@ -139,21 +137,9 @@ hidden_file_settings() {
     echo "0) Back"
     read -p "Enter choice [0-3]: " s_choice
     case "$s_choice" in
-        1)
-            show_hidden_files=false
-            save_settings
-            echo "✅ Now showing normal files only"
-            ;;
-        2)
-            show_hidden_files=true
-            save_settings
-            echo "✅ Now showing all files including hidden"
-            ;;
-        3)
-            show_hidden_files=$DEFAULT_SHOW_HIDDEN_FILES
-            save_settings
-            echo "✅ Restored to default (→ $DEFAULT_SHOW_HIDDEN_FILES)"
-            ;;
+        1) show_hidden_files=false; save_settings; echo "✅ Now showing normal files only" ;;
+        2) show_hidden_files=true;  save_settings; echo "✅ Now showing all files including hidden" ;;
+        3) show_hidden_files=$DEFAULT_SHOW_HIDDEN_FILES; save_settings; echo "✅ Restored to default (→ $DEFAULT_SHOW_HIDDEN_FILES)" ;;
         0) return ;;
         *) echo "❌ Invalid choice" ;;
     esac
@@ -162,7 +148,6 @@ hidden_file_settings() {
 index_mode_threshold_settings() {
     echo ""
     echo "🗂️  Index mode threshold:"
-    echo "  Use index-based sorting if files/folders in path exceed this number."
     echo "  Current: $index_mode_threshold"
     echo "  Default: $DEFAULT_INDEX_MODE_THRESHOLD"
     echo ""
@@ -181,11 +166,7 @@ index_mode_threshold_settings() {
                 echo "❌ Invalid. Must be a positive integer."
             fi
             ;;
-        2)
-            index_mode_threshold=$DEFAULT_INDEX_MODE_THRESHOLD
-            save_settings
-            echo "✅ Threshold restored to default (→ $DEFAULT_INDEX_MODE_THRESHOLD)"
-            ;;
+        2) index_mode_threshold=$DEFAULT_INDEX_MODE_THRESHOLD; save_settings; echo "✅ Restored to default (→ $DEFAULT_INDEX_MODE_THRESHOLD)" ;;
         0) return ;;
         *) echo "❌ Invalid choice" ;;
     esac
@@ -207,30 +188,14 @@ terminal_bg_color_settings() {
             read -p "Color: " input_color
             if _valid_hex "$input_color"; then
                 terminal_bg_color="$(_normalize_hex "$input_color")"
-                save_settings
-                _persist_colors_to_rc
-                apply_colors
+                save_settings; _persist_colors_to_rc; apply_colors
                 echo "✅ Background set to #$terminal_bg_color — active now and on every new session"
             else
                 echo "❌ Invalid — must be 6 hex digits (e.g. #1e1e2e or 1e1e2e)"
             fi
             ;;
-        2)
-            terminal_bg_color=""
-            save_settings
-            _persist_colors_to_rc
-            reset_colors
-            apply_colors
-            echo "✅ Background cleared — using terminal default from next session"
-            ;;
-        3)
-            terminal_bg_color=$DEFAULT_TERMINAL_BG_COLOR
-            save_settings
-            _persist_colors_to_rc
-            reset_colors
-            apply_colors
-            echo "✅ Background restored to default (→ ${DEFAULT_TERMINAL_BG_COLOR:-terminal default})"
-            ;;
+        2) terminal_bg_color=""; save_settings; _persist_colors_to_rc; reset_colors; apply_colors; echo "✅ Background cleared" ;;
+        3) terminal_bg_color=$DEFAULT_TERMINAL_BG_COLOR; save_settings; _persist_colors_to_rc; reset_colors; apply_colors; echo "✅ Restored to default" ;;
         0) return ;;
         *) echo "❌ Invalid choice" ;;
     esac
@@ -252,30 +217,14 @@ terminal_text_color_settings() {
             read -p "Color: " input_color
             if _valid_hex "$input_color"; then
                 terminal_text_color="$(_normalize_hex "$input_color")"
-                save_settings
-                _persist_colors_to_rc
-                apply_colors
+                save_settings; _persist_colors_to_rc; apply_colors
                 echo "✅ Text color set to #$terminal_text_color — active now and on every new session"
             else
                 echo "❌ Invalid — must be 6 hex digits (e.g. #cdd6f4 or cdd6f4)"
             fi
             ;;
-        2)
-            terminal_text_color=""
-            save_settings
-            _persist_colors_to_rc
-            reset_colors
-            apply_colors
-            echo "✅ Text color cleared — using terminal default from next session"
-            ;;
-        3)
-            terminal_text_color=$DEFAULT_TERMINAL_TEXT_COLOR
-            save_settings
-            _persist_colors_to_rc
-            reset_colors
-            apply_colors
-            echo "✅ Text color restored to default (→ ${DEFAULT_TERMINAL_TEXT_COLOR:-terminal default})"
-            ;;
+        2) terminal_text_color=""; save_settings; _persist_colors_to_rc; reset_colors; apply_colors; echo "✅ Text color cleared" ;;
+        3) terminal_text_color=$DEFAULT_TERMINAL_TEXT_COLOR; save_settings; _persist_colors_to_rc; reset_colors; apply_colors; echo "✅ Restored to default" ;;
         0) return ;;
         *) echo "❌ Invalid choice" ;;
     esac
@@ -302,9 +251,7 @@ restore_all_defaults() {
             apply_colors
             echo "✅ All settings restored to factory defaults"
             ;;
-        *)
-            echo "↩️  Cancelled — no changes made"
-            ;;
+        *) echo "↩️  Cancelled — no changes made" ;;
     esac
 }
 
@@ -316,3 +263,5 @@ save_settings() {
         echo "terminal_text_color=$terminal_text_color"
     } > "$SETTINGS_FILE"
 }
+
+apply_colors
