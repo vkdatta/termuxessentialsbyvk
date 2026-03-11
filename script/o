@@ -299,11 +299,9 @@ while true; do
         fi
     else
         declare -A next_counts
-        local pattern
+        pattern="$path/*"
         if [ -n "$current_prefix" ]; then
             pattern="$path/$current_prefix*"
-        else
-            pattern="$path/*"
         fi
         if $show_all_types; then
             shopt -s nullglob dotglob nocaseglob
@@ -312,10 +310,10 @@ while true; do
         fi
         for f in $pattern; do
             [ -e "$f" ] || continue
-            local base=$(basename -- "$f")
+            base=$(basename -- "$f")
             [[ "$base" == "." || "$base" == ".." ]] && continue
-            local len=${#current_prefix}
-            local next_char="${base:$len:1}"
+            len=${#current_prefix}
+            next_char="${base:$len:1}"
             next_char="${next_char^^}"
             [[ ! "$next_char" =~ [A-Z] ]] && next_char="#"
             ((next_counts[$next_char]++))
@@ -327,8 +325,8 @@ while true; do
         done
         echo "📂 Too many items ($total). Imaginary groups by next character:"
         for i in "${!group_chars[@]}"; do
-            local char="${group_chars[$i]}"
-            local cnt="${next_counts[$char]}"
+            char="${group_chars[$i]}"
+            cnt="${next_counts[$char]}"
             printf "%2d) 📁 %s%s (%d items)\n" "$((i+1))" "$current_prefix" "$char" "$cnt"
         done
         echo "Type letter or select number to drill down"
@@ -487,7 +485,7 @@ while true; do
             fi
         fi
     elif [ ${#group_chars[@]} -gt 0 ] && [[ $choice_trimmed =~ ^[0-9]+$ ]] && [ "$choice_trimmed" -ge 1 ] && [ "$choice_trimmed" -le "${#group_chars[@]}" ]; then
-        local selected_char="${group_chars[$((choice_trimmed-1))]}"
+        selected_char="${group_chars[$((choice_trimmed-1))]}"
         group_prefix="${group_prefix}${selected_char}"
     elif [ ${#items[@]} -eq 0 ] && [[ $choice_upper =~ ^[A-Z]$ || "$choice_upper" == "#" ]]; then
         group_prefix="${group_prefix}${choice_upper}"
