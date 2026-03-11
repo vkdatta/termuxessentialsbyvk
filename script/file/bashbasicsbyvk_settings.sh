@@ -5,7 +5,7 @@ SETTINGS_FILE="$SCRIPT_HOME/bashbasicsbyvk.cfg"
 
 [ -f "$SETTINGS_FILE" ] && source "$SETTINGS_FILE"
 
-: "${show_all_types:=false}"
+: "${show_hidden_files:=false}"
 : "${imaginary_threshold:=200}"
 
 settings_menu() {
@@ -26,8 +26,8 @@ hidden_file_settings() {
     echo "2) Show all types (including hidden)"
     read -p "Enter choice [1-2]: " s_choice
     case "$s_choice" in
-        1) show_all_types=false ;;
-        2) show_all_types=true ;;
+        1) show_hidden_files=false ;;
+        2) show_hidden_files=true ;;
         *) echo "❌ Invalid choice"; return ;;
     esac
 
@@ -51,7 +51,7 @@ imaginary_threshold_settings() {
 
 save_settings() {
     {
-        echo "show_all_types=$show_all_types"
+        echo "show_hidden_files=$show_hidden_files"
         echo "imaginary_threshold=$imaginary_threshold"
     } > "$SETTINGS_FILE"
 }
