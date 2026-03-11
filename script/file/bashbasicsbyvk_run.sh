@@ -35,7 +35,7 @@ handle_file() {
                 return 1
                 ;;
             4)
-                delete "$file"
+                bashbasicsbyvk_delete "$file"
                 return 1
                 ;;
             5)
