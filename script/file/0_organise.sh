@@ -67,10 +67,10 @@ organise_by_ext() {
                 mkdir -p "$folder"
                 if [ "$e" = "noext" ]; then
                     for f in "${files[@]}"; do
-                        [[ "$(basename "$f")" != *.* ]] && mv -v "$f" "$folder/"
+                        [[ "$(basename "$f")" != *.* ]] && mv "$f" "$folder/"
                     done
                 else
-                    for f in "$path"/*."$e"; do [ -f "$f" ] && mv -v "$f" "$folder/"; done
+                    for f in "$path"/*."$e"; do [ -f "$f" ] && mv "$f" "$folder/"; done
                 fi
             done
             ;;
@@ -82,10 +82,10 @@ organise_by_ext() {
             mkdir -p "$folder"
             if [ "$ext" = "noext" ]; then
                 for f in "${files[@]}"; do
-                    [[ "$(basename "$f")" != *.* ]] && mv -v "$f" "$folder/"
+                    [[ "$(basename "$f")" != *.* ]] && mv "$f" "$folder/"
                 done
             else
-                for f in "$path"/*."$ext"; do [ -f "$f" ] && mv -v "$f" "$folder/"; done
+                for f in "$path"/*."$ext"; do [ -f "$f" ] && mv "$f" "$folder/"; done
             fi
             ;;
     esac
@@ -107,7 +107,7 @@ organise_by_year() {
         if [ "$group_y" -eq 1 ]; then
             local gname="...$y"
             mkdir -p "$path/$gname"
-            mv -v "$f" "$path/$gname/"
+            mv "$f" "$path/$gname/"
         else
             local offset=$(( y - min_y ))
             local gstart=$(( min_y + (offset / group_y) * group_y ))
@@ -116,7 +116,7 @@ organise_by_year() {
             local gname="...${gstart}-${gend}"
             local sub="...$y"
             mkdir -p "$path/$gname/$sub"
-            mv -v "$f" "$path/$gname/$sub/"
+            mv "$f" "$path/$gname/$sub/"
         fi
     done
     echo "✅ Organised by year(s)"
@@ -171,7 +171,7 @@ organise_by_year_month() {
             local mleaf="$year_leaf/$mgname/$msub"
         fi
         mkdir -p "$mleaf"
-        mv -v "$f" "$mleaf/"
+        mv "$f" "$mleaf/"
     done
     echo "✅ Organised by year(s) > month(s)"
 }
@@ -243,7 +243,7 @@ organise_by_year_month_date() {
             local final_path="$mleaf/$dgname/$dsub"
         fi
         mkdir -p "$final_path"
-        mv -v "$f" "$final_path/"
+        mv "$f" "$final_path/"
     done
     echo "✅ Organised by year(s) > month(s) > date(s)"
 }
@@ -255,16 +255,14 @@ unorganise() {
     read -p "Choice: " uch
 
     if [ "$uch" = "1" ]; then
-        echo "Flattening all subfolders recursively..."
-        find "$path" -mindepth 2 -type f -exec mv -v {} "$path/" \;
+        find "$path" -mindepth 2 -type f -exec mv {} "$path/" \;
         find "$path" -type d -empty -delete
         echo "✅ All files brought to current location. Empty folders removed."
     else
         if select_items_common "UNORGANISE (folders only)"; then
             for dir in "${selected_items[@]}"; do
                 [ -d "$dir" ] || continue
-                echo "Unorganising $dir..."
-                find "$dir" -type f -exec mv -v {} "$path/" \;
+                find "$dir" -type f -exec mv {} "$path/" \;
                 find "$dir" -type d -empty -delete
             done
         fi
