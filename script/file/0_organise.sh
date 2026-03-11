@@ -1,288 +1,278 @@
-get_top_level_files() {
-    local p="$1"
-    local -a fl=()
-    for f in "$p"/*; do
-        [ -f "$f" ] && fl+=("$f")
-    done
-    echo "${fl[@]}"
+_ts_to_ymd() {
+local ts=$1
+local days=$(( ts / 86400 ))
+local z=$(( days + 719468 ))
+local era=$(( (z >= 0 ? z : z - 146096) / 146097 ))
+local doe=$(( z - era * 146097 ))
+local yoe=$(( (doe - doe/1460 + doe/36524 - doe/146096) / 365 ))
+local y=$(( yoe + era * 400 ))
+local doy=$(( doe - (365*yoe + yoe/4 - yoe/100) ))
+local mp=$(( (5*doy + 2) / 153 ))
+local d=$(( doy - (153*mp + 2)/5 + 1 ))
+local m=$(( mp + (mp < 10 ? 3 : -9) ))
+[[ $m -le 2 ]] && y=$(( y + 1 ))
+_YMD_Y=$y _YMD_M=$m _YMD_D=$d
 }
 
-get_min_max_year() {
-    local p="$1"
-    local min_y=99999 max_y=0
-    local -a files
-    read -ra files <<< "$(get_top_level_files "$p")"
-    for f in "${files[@]}"; do
-        local y=$(get_year "$f")
-        (( y < min_y )) && min_y=$y
-        (( y > max_y )) && max_y=$y
-    done
-    echo "$min_y $max_y"
+_batch_stat() {
+local p="$1"
+declare -gA _FILE_TS=()
+local line fname ts
+while IFS='|' read -r fname ts; do
+[ -f "$fname" ] || continue
+_FILE_TS["$fname"]=$ts
+done < <(stat -c "%n|%Y" "$p"/* 2>/dev/null)
 }
 
-get_mtime() {
-    stat -c %Y "$1" 2>/dev/null || echo 0
-}
-
-get_year() {
-    local ts=$(get_mtime "$1")
-    date -d "@$ts" +%Y 2>/dev/null || echo 0
-}
-
-get_month_num() {
-    local ts=$(get_mtime "$1")
-    date -d "@$ts" +%m 2>/dev/null || echo 0
-}
-
-get_day() {
-    local ts=$(get_mtime "$1")
-    date -d "@$ts" +%d 2>/dev/null || echo 0
-}
-
-get_month_name() {
-    local ts=$(get_mtime "$1")
-    date -d "@$ts" +%b | tr '[:upper:]' '[:lower:]' 2>/dev/null || echo "unknown"
+_bulk_move() {
+local dest="$1"; shift
+local -a srcs=("$@")
+[ ${#srcs[@]} -eq 0 ] && return
+mkdir -p "$dest"
+mv "${srcs[@]}" "$dest/"
 }
 
 organise_by_ext() {
-    echo "📁 Organise by extension:"
-    echo "1) All files by ext"
-    echo "2) Selected extension"
-    read -p "Choice: " ech
-    local -a files
-    read -ra files <<< "$(get_top_level_files "$path")"
-    [ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
-
-    case "$ech" in
-        1)
-            declare -A exts
-            for f in "${files[@]}"; do
-                local b=$(basename "$f")
-                local e="${b##*.}"
-                [ "$e" = "$b" ] && e="noext"
-                exts["$e"]=1
-            done
-            for e in "${!exts[@]}"; do
-                local folder="$path/...$e"
-                mkdir -p "$folder"
-                if [ "$e" = "noext" ]; then
-                    for f in "${files[@]}"; do
-                        [[ "$(basename "$f")" != *.* ]] && mv "$f" "$folder/"
-                    done
-                else
-                    for f in "$path"/*."$e"; do [ -f "$f" ] && mv "$f" "$folder/"; done
-                fi
-            done
-            ;;
-        2)
-            read -p "Extension (e.g. py or .py): " inputext
-            local ext="${inputext#.}"
-            [ -z "$ext" ] && ext="noext"
-            local folder="$path/...$ext"
-            mkdir -p "$folder"
-            if [ "$ext" = "noext" ]; then
-                for f in "${files[@]}"; do
-                    [[ "$(basename "$f")" != *.* ]] && mv "$f" "$folder/"
-                done
-            else
-                for f in "$path"/*."$ext"; do [ -f "$f" ] && mv "$f" "$folder/"; done
-            fi
-            ;;
-    esac
-    echo "✅ Organised by extension"
+echo "📁 Organise by extension:"
+echo "1) All files by ext"
+echo "2) Selected extension"
+read -p "Choice: " ech
+local -a files=()
+for f in "$path"/*; do [ -f "$f" ] && files+=("$f"); done
+[ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
+declare -A ext_buckets=()
+case "$ech" in
+1)
+for f in "${files[@]}"; do
+local b="${f##*/}"
+local e="${b##*.}"
+[ "$e" = "$b" ] && e="noext"
+ext_buckets["$e"]+="$f"$'\x00'
+done
+for e in "${!ext_buckets[@]}"; do
+local folder="$path/...$e"
+local -a bucket=()
+while IFS= read -r -d $'\x00' item; do
+[ -n "$item" ] && bucket+=("$item")
+done <<< "${ext_buckets[$e]}"
+_bulk_move "$folder" "${bucket[@]}"
+done
+;;
+2)
+read -p "Extension (e.g. py or .py): " inputext
+local ext="${inputext#.}"
+[ -z "$ext" ] && ext="noext"
+local folder="$path/...$ext"
+local -a bucket=()
+if [ "$ext" = "noext" ]; then
+for f in "${files[@]}"; do
+local b="${f##*/}"
+[[ "$b" != *.* ]] && bucket+=("$f")
+done
+else
+for f in "$path"/*."$ext"; do [ -f "$f" ] && bucket+=("$f"); done
+fi
+_bulk_move "$folder" "${bucket[@]}"
+;;
+esac
+echo "✅ Organised by extension"
 }
 
 organise_by_year() {
-    local min_max=($(get_min_max_year "$path"))
-    local min_y=${min_max[0]} max_y=${min_max[1]}
-    local -a files
-    read -ra files <<< "$(get_top_level_files "$path")"
-    [ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
-
-    read -p "Number of years to group (1 = each year separate): " group_y
-    [[ $group_y =~ ^[0-9]+$ ]] || group_y=1
-
-    for f in "${files[@]}"; do
-        local y=$(get_year "$f")
-        if [ "$group_y" -eq 1 ]; then
-            local gname="...$y"
-            mkdir -p "$path/$gname"
-            mv "$f" "$path/$gname/"
-        else
-            local offset=$(( y - min_y ))
-            local gstart=$(( min_y + (offset / group_y) * group_y ))
-            local gend=$(( gstart + group_y - 1 ))
-            [ $gend -gt $max_y ] && gend=$max_y
-            local gname="...${gstart}-${gend}"
-            local sub="...$y"
-            mkdir -p "$path/$gname/$sub"
-            mv "$f" "$path/$gname/$sub/"
-        fi
-    done
-    echo "✅ Organised by year(s)"
+local -a files=()
+for f in "$path"/*; do [ -f "$f" ] && files+=("$f"); done
+[ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
+read -p "Number of years to group (1 = each year separate): " group_y
+[[ $group_y =~ ^[0-9]+$ ]] || group_y=1
+_batch_stat "$path"
+local min_y=99999 max_y=0
+for f in "${files[@]}"; do
+local ts="${_FILE_TS[$f]:-0}"
+_ts_to_ymd "$ts"
+local y=$_YMD_Y
+(( y < min_y )) && min_y=$y
+(( y > max_y )) && max_y=$y
+done
+declare -A year_buckets=()
+for f in "${files[@]}"; do
+local ts="${_FILE_TS[$f]:-0}"
+_ts_to_ymd "$ts"
+local y=$_YMD_Y
+local dest
+if [ "$group_y" -eq 1 ]; then
+dest="$path/...$y"
+else
+local offset=$(( y - min_y ))
+local gstart=$(( min_y + (offset / group_y) * group_y ))
+local gend=$(( gstart + group_y - 1 ))
+[ $gend -gt $max_y ] && gend=$max_y
+dest="$path/...${gstart}-${gend}/...$y"
+fi
+year_buckets["$dest"]+="$f"$'\x00'
+done
+for dest in "${!year_buckets[@]}"; do
+local -a bucket=()
+while IFS= read -r -d $'\x00' item; do
+[ -n "$item" ] && bucket+=("$item")
+done <<< "${year_buckets[$dest]}"
+_bulk_move "$dest" "${bucket[@]}"
+done
+echo "✅ Organised by year(s)"
 }
 
 organise_by_year_month() {
-    local min_max=($(get_min_max_year "$path"))
-    local min_y=${min_max[0]} max_y=${min_max[1]}
-    local -a files
-    read -ra files <<< "$(get_top_level_files "$path")"
-    [ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
-
-    read -p "Number of years to group: " group_y
-    [[ $group_y =~ ^[0-9]+$ ]] || group_y=1
-    read -p "Number of months to group: " group_m
-    [[ $group_m =~ ^[0-9]+$ ]] || group_m=1
-    local -a month_abbr=(jan feb mar apr may jun jul aug sep oct nov dec)
-
-    for f in "${files[@]}"; do
-        local y=$(get_year "$f")
-        local mnum=$(get_month_num "$f")
-        local m_idx=$((10#$mnum - 1))
-        local monthname="${month_abbr[$m_idx]}"
-
-        # Year level
-        if [ "$group_y" -eq 1 ]; then
-            local year_leaf="$path/...$y"
-        else
-            local offset=$(( y - min_y ))
-            local gstart=$(( min_y + (offset / group_y) * group_y ))
-            local gend=$(( gstart + group_y - 1 ))
-            [ $gend -gt $max_y ] && gend=$max_y
-            local year_group="...${gstart}-${gend}"
-            local year_sub="...$y"
-            local year_leaf="$path/$year_group/$year_sub"
-        fi
-        mkdir -p "$year_leaf"
-
-        # Month level
-        if [ "$group_m" -eq 1 ]; then
-            local mgname="...$monthname"
-            local mleaf="$year_leaf/$mgname"
-        else
-            local mgroup_idx=$(( (10#$mnum -1) / group_m ))
-            local mstart=$(( mgroup_idx * group_m + 1 ))
-            local mend=$(( mstart + group_m - 1 ))
-            [ $mend -gt 12 ] && mend=12
-            local mstart_name="${month_abbr[$((mstart-1))]}"
-            local mend_name="${month_abbr[$((mend-1))]}"
-            local mgname="...${mstart_name}-${mend_name}"
-            local msub="...$monthname"
-            local mleaf="$year_leaf/$mgname/$msub"
-        fi
-        mkdir -p "$mleaf"
-        mv "$f" "$mleaf/"
-    done
-    echo "✅ Organised by year(s) > month(s)"
+local -a files=()
+for f in "$path"/*; do [ -f "$f" ] && files+=("$f"); done
+[ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
+read -p "Number of years to group: " group_y
+[[ $group_y =~ ^[0-9]+$ ]] || group_y=1
+read -p "Number of months to group: " group_m
+[[ $group_m =~ ^[0-9]+$ ]] || group_m=1
+_batch_stat "$path"
+local month_abbr=(jan feb mar apr may jun jul aug sep oct nov dec)
+local min_y=99999 max_y=0
+for f in "${files[@]}"; do
+_ts_to_ymd "${_FILE_TS[$f]:-0}"
+(( _YMD_Y < min_y )) && min_y=$_YMD_Y
+(( _YMD_Y > max_y )) && max_y=$_YMD_Y
+done
+declare -A buckets=()
+for f in "${files[@]}"; do
+_ts_to_ymd "${_FILE_TS[$f]:-0}"
+local y=$_YMD_Y m=$_YMD_M
+local year_dest
+if [ "$group_y" -eq 1 ]; then
+year_dest="$path/...$y"
+else
+local offset=$(( y - min_y ))
+local gstart=$(( min_y + (offset / group_y) * group_y ))
+local gend=$(( gstart + group_y - 1 ))
+[ $gend -gt $max_y ] && gend=$max_y
+year_dest="$path/...${gstart}-${gend}/...$y"
+fi
+local mname="${month_abbr[$((m-1))]}"
+local month_dest
+if [ "$group_m" -eq 1 ]; then
+month_dest="$year_dest/...$mname"
+else
+local mgi=$(( (m-1) / group_m ))
+local mstart=$(( mgi * group_m + 1 ))
+local mend=$(( mstart + group_m - 1 ))
+[ $mend -gt 12 ] && mend=12
+month_dest="$year_dest/...${month_abbr[$((mstart-1))]}-${month_abbr[$((mend-1))]}/...$mname"
+fi
+buckets["$month_dest"]+="$f"$'\x00'
+done
+for dest in "${!buckets[@]}"; do
+local -a bucket=()
+while IFS= read -r -d $'\x00' item; do
+[ -n "$item" ] && bucket+=("$item")
+done <<< "${buckets[$dest]}"
+_bulk_move "$dest" "${bucket[@]}"
+done
+echo "✅ Organised by year(s) > month(s)"
 }
 
 organise_by_year_month_date() {
-    local min_max=($(get_min_max_year "$path"))
-    local min_y=${min_max[0]} max_y=${min_max[1]}
-    local -a files
-    read -ra files <<< "$(get_top_level_files "$path")"
-    [ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
-
-    read -p "Number of years to group: " group_y
-    [[ $group_y =~ ^[0-9]+$ ]] || group_y=1
-    read -p "Number of months to group: " group_m
-    [[ $group_m =~ ^[0-9]+$ ]] || group_m=1
-    read -p "Number of days to group: " group_d
-    [[ $group_d =~ ^[0-9]+$ ]] || group_d=1
-    local -a month_abbr=(jan feb mar apr may jun jul aug sep oct nov dec)
-
-    for f in "${files[@]}"; do
-        local y=$(get_year "$f")
-        local mnum=$(get_month_num "$f")
-        local m_idx=$((10#$mnum - 1))
-        local monthname="${month_abbr[$m_idx]}"
-        local dnum_clean=$((10#$(get_day "$f")))
-
-        # Year level
-        if [ "$group_y" -eq 1 ]; then
-            local year_leaf="$path/...$y"
-        else
-            local offset=$(( y - min_y ))
-            local gstart=$(( min_y + (offset / group_y) * group_y ))
-            local gend=$(( gstart + group_y - 1 ))
-            [ $gend -gt $max_y ] && gend=$max_y
-            local year_group="...${gstart}-${gend}"
-            local year_sub="...$y"
-            local year_leaf="$path/$year_group/$year_sub"
-        fi
-        mkdir -p "$year_leaf"
-
-        # Month level
-        if [ "$group_m" -eq 1 ]; then
-            local mgname="...$monthname"
-            local mleaf="$year_leaf/$mgname"
-        else
-            local mgroup_idx=$(( (10#$mnum -1) / group_m ))
-            local mstart=$(( mgroup_idx * group_m + 1 ))
-            local mend=$(( mstart + group_m - 1 ))
-            [ $mend -gt 12 ] && mend=12
-            local mstart_name="${month_abbr[$((mstart-1))]}"
-            local mend_name="${month_abbr[$((mend-1))]}"
-            local mgname="...${mstart_name}-${mend_name}"
-            local msub="...$monthname"
-            local mleaf="$year_leaf/$mgname/$msub"
-        fi
-        mkdir -p "$mleaf"
-
-        # Date level
-        if [ "$group_d" -eq 1 ]; then
-            local dgname="...$dnum_clean"
-            local final_path="$mleaf/$dgname"
-        else
-            local dgroup_idx=$(( (dnum_clean - 1) / group_d ))
-            local dstart=$(( dgroup_idx * group_d + 1 ))
-            local dend=$(( dstart + group_d - 1 ))
-            [ $dend -gt 31 ] && dend=31
-            local dgname="...${dstart}-${dend}"
-            local dsub="...$dnum_clean"
-            local final_path="$mleaf/$dgname/$dsub"
-        fi
-        mkdir -p "$final_path"
-        mv "$f" "$final_path/"
-    done
-    echo "✅ Organised by year(s) > month(s) > date(s)"
+local -a files=()
+for f in "$path"/*; do [ -f "$f" ] && files+=("$f"); done
+[ ${#files[@]} -eq 0 ] && { echo "No files"; return; }
+read -p "Number of years to group: " group_y
+[[ $group_y =~ ^[0-9]+$ ]] || group_y=1
+read -p "Number of months to group: " group_m
+[[ $group_m =~ ^[0-9]+$ ]] || group_m=1
+read -p "Number of days to group: " group_d
+[[ $group_d =~ ^[0-9]+$ ]] || group_d=1
+_batch_stat "$path"
+local month_abbr=(jan feb mar apr may jun jul aug sep oct nov dec)
+local min_y=99999 max_y=0
+for f in "${files[@]}"; do
+_ts_to_ymd "${_FILE_TS[$f]:-0}"
+(( _YMD_Y < min_y )) && min_y=$_YMD_Y
+(( _YMD_Y > max_y )) && max_y=$_YMD_Y
+done
+declare -A buckets=()
+for f in "${files[@]}"; do
+_ts_to_ymd "${_FILE_TS[$f]:-0}"
+local y=$_YMD_Y m=$_YMD_M d=$_YMD_D
+local year_dest
+if [ "$group_y" -eq 1 ]; then
+year_dest="$path/...$y"
+else
+local offset=$(( y - min_y ))
+local gstart=$(( min_y + (offset / group_y) * group_y ))
+local gend=$(( gstart + group_y - 1 ))
+[ $gend -gt $max_y ] && gend=$max_y
+year_dest="$path/...${gstart}-${gend}/...$y"
+fi
+local mname="${month_abbr[$((m-1))]}"
+local month_dest
+if [ "$group_m" -eq 1 ]; then
+month_dest="$year_dest/...$mname"
+else
+local mgi=$(( (m-1) / group_m ))
+local mstart=$(( mgi * group_m + 1 ))
+local mend=$(( mstart + group_m - 1 ))
+[ $mend -gt 12 ] && mend=12
+month_dest="$year_dest/...${month_abbr[$((mstart-1))]}-${month_abbr[$((mend-1))]}/...$mname"
+fi
+local day_dest
+if [ "$group_d" -eq 1 ]; then
+day_dest="$month_dest/...$d"
+else
+local dgi=$(( (d-1) / group_d ))
+local dstart=$(( dgi * group_d + 1 ))
+local dend=$(( dstart + group_d - 1 ))
+[ $dend -gt 31 ] && dend=31
+day_dest="$month_dest/...${dstart}-${dend}/...$d"
+fi
+buckets["$day_dest"]+="$f"$'\x00'
+done
+for dest in "${!buckets[@]}"; do
+local -a bucket=()
+while IFS= read -r -d $'\x00' item; do
+[ -n "$item" ] && bucket+=("$item")
+done <<< "${buckets[$dest]}"
+_bulk_move "$dest" "${bucket[@]}"
+done
+echo "✅ Organised by year(s) > month(s) > date(s)"
 }
 
 unorganise() {
-    echo "🔄 Unorganise and bring to current location:"
-    echo "1) Unorganise all"
-    echo "2) Unorganise selected folders"
-    read -p "Choice: " uch
-
-    if [ "$uch" = "1" ]; then
-        find "$path" -mindepth 2 -type f -exec mv {} "$path/" \;
-        find "$path" -type d -empty -delete
-        echo "✅ All files brought to current location. Empty folders removed."
-    else
-        if select_items_common "UNORGANISE (folders only)"; then
-            for dir in "${selected_items[@]}"; do
-                [ -d "$dir" ] || continue
-                find "$dir" -type f -exec mv {} "$path/" \;
-                find "$dir" -type d -empty -delete
-            done
-        fi
-    fi
+echo "🔄 Unorganise and bring to current location:"
+echo "1) Unorganise all"
+echo "2) Unorganise selected folders"
+read -p "Choice: " uch
+if [ "$uch" = "1" ]; then
+find "$path" -mindepth 2 -type f -exec mv -t "$path/" {} +
+find "$path" -mindepth 1 -type d -empty -delete
+echo "✅ All files brought to current location. Empty folders removed."
+else
+if select_items_common "UNORGANISE (folders only)"; then
+for dir in "${selected_items[@]}"; do
+[ -d "$dir" ] || continue
+find "$dir" -type f -exec mv -t "$path/" {} +
+find "$dir" -type d -empty -delete
+done
+echo "✅ Selected folders unorganised."
+fi
+fi
 }
 
 organise_menu() {
-    echo "🗂️ Organise files in current location ($path):"
-    echo "1) Organise by ext"
-    echo "2) Organise by year(s) (metadata)"
-    echo "3) Organise by year(s) > month(s) (metadata)"
-    echo "4) Organise by year(s) > month(s) > date(s) (metadata)"
-    echo "5) Unorganise and bring it to current location"
-    read -p "Enter choice [1-5]: " och
-    case "$och" in
-        1) organise_by_ext ;;
-        2) organise_by_year ;;
-        3) organise_by_year_month ;;
-        4) organise_by_year_month_date ;;
-        5) unorganise ;;
-        *) echo "❌ Invalid choice" ;;
-    esac
+echo "🗂️ Organise files in current location ($path):"
+echo "1) Organise by ext"
+echo "2) Organise by year(s) (metadata)"
+echo "3) Organise by year(s) > month(s) (metadata)"
+echo "4) Organise by year(s) > month(s) > date(s) (metadata)"
+echo "5) Unorganise and bring it to current location"
+read -p "Enter choice [1-5]: " och
+case "$och" in
+1) organise_by_ext ;;
+2) organise_by_year ;;
+3) organise_by_year_month ;;
+4) organise_by_year_month_date ;;
+5) unorganise ;;
+*) echo "❌ Invalid choice" ;;
+esac
 }
