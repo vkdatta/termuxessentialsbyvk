@@ -344,10 +344,6 @@ delete_imaginary_groups() {
 local p="$1"
 local pfx="$2"
 echo "Select group numbers to delete (supports ranges: 1-3,5):"
-for i in "${!imaginary_map[@]}"; do
-local ch="${imaginary_map[$i]}"
-printf " %2d) 📁 %s (%d items)\n" "$((i+1))" "$ch" "${group_counts[$ch]}"
-done
 read -p "Group numbers: " grplist
 local indices=($(parse_selection "$grplist" "${#imaginary_map[@]}"))
 if [ "${#indices[@]}" -eq 0 ]; then
