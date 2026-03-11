@@ -312,73 +312,36 @@ local p="$1"
 local pfx="$2"
 declare -gA group_counts=()
 local chars=()
-local upper lower
-for upper in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z; do
-lower="${upper,,}"
-local arr_u arr_l count=0
+local -A _seen_chars=()
+local -a all_entries=()
 if [ -n "$pfx" ]; then
-arr_u=("$p/${pfx}${upper}"*)
-arr_l=("$p/${pfx}${lower}"*)
+all_entries=("$p/${pfx}"*)
+$show_all_types && all_entries+=("$p"/.${pfx}*)
 else
-arr_u=("$p/${upper}"*)
-arr_l=("$p/${lower}"*)
+all_entries=("$p"/*)
+$show_all_types && {
+local _hidden=("$p"/.*)
+for _h in "${_hidden[@]}"; do
+local _hb="${_h##*/}"
+[[ "$_hb" == "." || "$_hb" == ".." ]] && continue
+all_entries+=("$_h")
+done
+}
 fi
-local cu="${#arr_u[@]}"
-local cl="${#arr_l[@]}"
-[[ "${arr_u[0]}" == "$p/${pfx}${upper}*" || "${arr_u[0]}" == "$p/${upper}*" ]] && cu=0
-[[ "${arr_l[0]}" == "$p/${pfx}${lower}*" || "${arr_l[0]}" == "$p/${lower}*" ]] && cl=0
-count=$((cu + cl))
-if [ "$count" -gt 0 ]; then
-group_counts["$upper"]=$count
-chars+=("$upper")
+for entry in "${all_entries[@]}"; do
+[ -e "$entry" ] || continue
+local bn="${entry##*/}"
+local first="${bn:0:1}"
+local upper="${first^^}"
+if [[ "$upper" =~ ^[A-Z]$ ]]; then
+group_counts["$upper"]=$(( ${group_counts["$upper"]:-0} + 1 ))
+[ -z "${_seen_chars[$upper]+x}" ] && chars+=("$upper") && _seen_chars["$upper"]=1
+else
+group_counts["#"]=$(( ${group_counts["#"]:-0} + 1 ))
+[ -z "${_seen_chars["#"]+x}" ] && _seen_chars["#"]=1
 fi
 done
-local hash_count=0
-local digits=(0 1 2 3 4 5 6 7 8 9)
-for d in "${digits[@]}"; do
-local arr
-if [ -n "$pfx" ]; then
-arr=("$p/${pfx}${d}"*)
-else
-arr=("$p/${d}"*)
-fi
-local c="${#arr[@]}"
-[[ "${arr[0]}" == "$p/${pfx}${d}*" || "${arr[0]}" == "$p/${d}*" ]] && c=0
-hash_count=$((hash_count + c))
-done
-local specials=(_ - . "(" "[" "{")
-for s in "${specials[@]}"; do
-local arr
-if [ -n "$pfx" ]; then
-arr=("$p/${pfx}${s}"*)
-else
-arr=("$p/${s}"*)
-fi
-local c="${#arr[@]}"
-[[ c -gt 0 ]] && hash_count=$((hash_count + c))
-done
-if $show_all_types; then
-local hidden_count=0
-if [ -n "$pfx" ]; then
-local arr=("$p"/.${pfx}*)
-local c="${#arr[@]}"
-[[ "${arr[0]}" == "$p/.${pfx}*" ]] && c=0
-hidden_count=$c
-else
-local arr=("$p"/.*)
-local c="${#arr[@]}"
-[[ "${arr[0]}" == "$p/.*" ]] && c=0
-local hf=0
-for f in "${arr[@]}"; do
-local bn; bn=$(basename "$f")
-[[ "$bn" == "." || "$bn" == ".." ]] && continue
-((hf++))
-done
-hidden_count=$hf
-fi
-[ "$hidden_count" -gt 0 ] && hash_count=$((hash_count + hidden_count))
-fi
-[ "$hash_count" -gt 0 ] && group_counts["#"]=$hash_count && chars+=("#")
+[ "${group_counts[#]:-0}" -gt 0 ] && chars+=("#")
 group_chars=("${chars[@]}")
 }
 
