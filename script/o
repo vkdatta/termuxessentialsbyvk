@@ -339,6 +339,63 @@ idx=$((idx+1))
 done
 }
 
+
+delete_imaginary_groups() {
+local p="$1"
+local pfx="$2"
+echo "Select group numbers to delete (supports ranges: 1-3,5):"
+for i in "${!imaginary_map[@]}"; do
+local ch="${imaginary_map[$i]}"
+printf " %2d) 📁 %s (%d items)\n" "$((i+1))" "$ch" "${group_counts[$ch]}"
+done
+read -p "Group numbers: " grplist
+local indices=($(parse_selection "$grplist" "${#imaginary_map[@]}"))
+if [ "${#indices[@]}" -eq 0 ]; then
+echo "❌ No valid groups selected"
+return
+fi
+local -a to_delete=()
+for idx in "${indices[@]}"; do
+local ch="${imaginary_map[$((idx-1))]}"
+if [ "$ch" == "#" ]; then
+local specials=(0 1 2 3 4 5 6 7 8 9 _ - . "(" "[" "{")
+for s in "${specials[@]}"; do
+for f in "$p/${pfx}${s}"* "$p"/.${pfx}${s}*; do
+[ -e "$f" ] || continue
+to_delete+=("$f")
+done
+done
+else
+local lower="${ch,,}"
+for f in "$p/${pfx}${ch}"* "$p/${pfx}${lower}"*; do
+[ -e "$f" ] || continue
+to_delete+=("$f")
+done
+fi
+done
+local -A _seen=()
+local unique=()
+for f in "${to_delete[@]}"; do
+[ -z "${_seen[$f]+x}" ] && unique+=("$f") && _seen["$f"]=1
+done
+if [ "${#unique[@]}" -eq 0 ]; then
+echo "❌ No items found for selected groups"
+return
+fi
+echo "⚠️  WARNING: About to delete ${#unique[@]} item(s):"
+for f in "${unique[@]}"; do
+echo "   - $(basename "$f")"
+done
+read -p "Are you sure? This cannot be undone. (y/n): " confirm
+if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+echo "🚫 Deletion cancelled"
+return
+fi
+for f in "${unique[@]}"; do
+rm -rf -- "$f" && echo "🗑️  Deleted: $(basename "$f")"
+done
+}
+
 path=$(pwd)
 move_mode=false
 copy_mode=false
@@ -539,7 +596,11 @@ read -p "Choice: " tr_choice
 continue
 ;;
 d|D)
+if $imaginary_mode; then
+delete_imaginary_groups "$path" "$group_prefix"
+else
 delete_items
+fi
 continue
 ;;
 f|F)
