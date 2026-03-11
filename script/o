@@ -398,7 +398,7 @@ total=$(count_items_in_path "$path")
 imaginary_mode=false
 items=()
 
-if [ "$total" -gt 200 ] && ! $force_show; then
+if [ "$total" -gt "${imaginary_threshold:-200}" ] && ! $force_show; then
 imaginary_mode=true
 if [ -n "$group_prefix" ]; then
 local_arr=()
@@ -416,7 +416,7 @@ local_arr+=("$f")
 done
 fi
 pfx_count="${#local_arr[@]}"
-if [ "$pfx_count" -le 200 ]; then
+if [ "$pfx_count" -le "${imaginary_threshold:-200}" ]; then
 imaginary_mode=false
 items=("${local_arr[@]}")
 else
