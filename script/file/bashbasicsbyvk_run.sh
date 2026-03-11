@@ -39,11 +39,11 @@ handle_file() {
                 return 1
                 ;;
             5)
-                erase "$file"
+                bashbasicsbyvk_erase "$file"
                 return 1
                 ;;
             6)
-                overwrite "$file"
+                bashbasicsbyvk_overwrite "$file"
                 return 1
                 ;;
             7)
