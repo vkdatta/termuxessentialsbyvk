@@ -50,7 +50,7 @@ for f in "${files[@]}"; do
 local b="${f##*/}"
 local e="${b##*.}"
 [ "$e" = "$b" ] && e="noext"
-ext_buckets["$path/...$e"]+="$f"$'\n'
+ext_buckets["$path/$e"]+="$f"$'\n'
 done
 _flush_buckets ext_buckets
 ;;
@@ -58,7 +58,7 @@ _flush_buckets ext_buckets
 read -p "Extension (e.g. py or .py): " inputext
 local ext="${inputext#.}"
 [ -z "$ext" ] && ext="noext"
-local folder="$path/...$ext"
+local folder="$path/$ext"
 local -a batch=()
 if [ "$ext" = "noext" ]; then
 for f in "${files[@]}"; do
@@ -96,13 +96,13 @@ for f in "${files[@]}"; do
 _ts_to_ymd "${_FILE_TS[$f]:-0}"
 local y=$_YMD_Y dest
 if [ "$group_y" -eq 1 ]; then
-dest="$path/...$y"
+dest="$path/$y"
 else
 local offset=$(( y - min_y ))
 local gstart=$(( min_y + (offset / group_y) * group_y ))
 local gend=$(( gstart + group_y - 1 ))
 [ $gend -gt $max_y ] && gend=$max_y
-dest="$path/...${gstart}-${gend}/...$y"
+dest="$path/${gstart}-${gend}/$y"
 fi
 buckets["$dest"]+="$f"$'\n'
 done
@@ -132,24 +132,24 @@ _ts_to_ymd "${_FILE_TS[$f]:-0}"
 local y=$_YMD_Y m=$_YMD_M
 local year_dest
 if [ "$group_y" -eq 1 ]; then
-year_dest="$path/...$y"
+year_dest="$path/$y"
 else
 local offset=$(( y - min_y ))
 local gstart=$(( min_y + (offset / group_y) * group_y ))
 local gend=$(( gstart + group_y - 1 ))
 [ $gend -gt $max_y ] && gend=$max_y
-year_dest="$path/...${gstart}-${gend}/...$y"
+year_dest="$path/${gstart}-${gend}/$y"
 fi
 local mname="${month_abbr[$((m-1))]}"
 local dest
 if [ "$group_m" -eq 1 ]; then
-dest="$year_dest/...$mname"
+dest="$year_dest/$mname"
 else
 local mgi=$(( (m-1) / group_m ))
 local mstart=$(( mgi * group_m + 1 ))
 local mend=$(( mstart + group_m - 1 ))
 [ $mend -gt 12 ] && mend=12
-dest="$year_dest/...${month_abbr[$((mstart-1))]}-${month_abbr[$((mend-1))]}/...$mname"
+dest="$year_dest/${month_abbr[$((mstart-1))]}-${month_abbr[$((mend-1))]}/$mname"
 fi
 buckets["$dest"]+="$f"$'\n'
 done
@@ -181,34 +181,34 @@ _ts_to_ymd "${_FILE_TS[$f]:-0}"
 local y=$_YMD_Y m=$_YMD_M d=$_YMD_D
 local year_dest
 if [ "$group_y" -eq 1 ]; then
-year_dest="$path/...$y"
+year_dest="$path/$y"
 else
 local offset=$(( y - min_y ))
 local gstart=$(( min_y + (offset / group_y) * group_y ))
 local gend=$(( gstart + group_y - 1 ))
 [ $gend -gt $max_y ] && gend=$max_y
-year_dest="$path/...${gstart}-${gend}/...$y"
+year_dest="$path/${gstart}-${gend}/$y"
 fi
 local mname="${month_abbr[$((m-1))]}"
 local month_dest
 if [ "$group_m" -eq 1 ]; then
-month_dest="$year_dest/...$mname"
+month_dest="$year_dest/$mname"
 else
 local mgi=$(( (m-1) / group_m ))
 local mstart=$(( mgi * group_m + 1 ))
 local mend=$(( mstart + group_m - 1 ))
 [ $mend -gt 12 ] && mend=12
-month_dest="$year_dest/...${month_abbr[$((mstart-1))]}-${month_abbr[$((mend-1))]}/...$mname"
+month_dest="$year_dest/${month_abbr[$((mstart-1))]}-${month_abbr[$((mend-1))]}/$mname"
 fi
 local dest
 if [ "$group_d" -eq 1 ]; then
-dest="$month_dest/...$d"
+dest="$month_dest/$d"
 else
 local dgi=$(( (d-1) / group_d ))
 local dstart=$(( dgi * group_d + 1 ))
 local dend=$(( dstart + group_d - 1 ))
 [ $dend -gt 31 ] && dend=31
-dest="$month_dest/...${dstart}-${dend}/...$d"
+dest="$month_dest/${dstart}-${dend}/$d"
 fi
 buckets["$dest"]+="$f"$'\n'
 done
