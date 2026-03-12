@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """
-XTRACT - Lightning-fast web content extractor
-curl_cffi  → impersonates Chrome's exact TLS fingerprint (BoringSSL)
-             defeats JA3/JA4 bot-detection that blocks aiohttp/requests
-asyncio    → true parallel I/O via curl_cffi's AsyncSession
-lxml       → 5-10× faster HTML parsing than html.parser
+XTRACT - Fast web content extractor
+requests.Session  → connection pooling + cookie persistence (works on Termux/Android)
+ThreadPoolExecutor → parallel fetching without asyncio native-lib dependencies
+Homepage pre-fetch → establishes session cookies before paginated requests
 """
 
-import asyncio
 import os
 import re
 import subprocess
 import sys
 import time
+import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin, urlparse
 
+import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 
@@ -26,12 +27,30 @@ except ImportError:
     EXCEL_AVAILABLE = False
 
 # ─── Tuning ───────────────────────────────────────────────────────────────────
-CONCURRENCY    = 10     # simultaneous in-flight requests
+CONCURRENCY     = 5     # threads — low enough to avoid burst-blocks
 REQUEST_TIMEOUT = 20    # seconds per request
-STAGGER_DELAY  = 0.05   # seconds between launching coroutines (spreads burst)
-MAX_RETRIES    = 3      # retries per failed page
-RETRY_BACKOFF  = 1.5    # seconds before first retry (doubles each attempt)
-IMPERSONATE    = "chrome120"  # curl_cffi Chrome profile to impersonate
+MAX_RETRIES     = 4     # retries per failed page
+RETRY_BACKOFF   = 2.0   # seconds before first retry (doubles each attempt)
+STAGGER_DELAY   = 0.3   # seconds between starting each thread
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "sec-ch-ua": '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "document",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-site": "none",
+    "sec-fetch-user": "?1",
+    "upgrade-insecure-requests": "1",
+}
 
 
 # ─── Dependency helpers ───────────────────────────────────────────────────────
@@ -47,19 +66,6 @@ def _pip(pkg: str) -> bool:
 
 
 def bootstrap():
-    """Ensure curl_cffi and lxml are installed."""
-    try:
-        from curl_cffi.requests import AsyncSession as _  # noqa: F401
-    except ImportError:
-        print("📦 Installing curl_cffi (Chrome TLS impersonation)…")
-        if not _pip("curl_cffi"):
-            sys.exit(
-                "🚨 Could not install curl_cffi.\n"
-                "   Run manually:  pip install curl_cffi\n"
-                "   On Termux:     pip install curl_cffi"
-            )
-        print("✅ curl_cffi installed.")
-
     try:
         import lxml as _  # noqa: F401
     except ImportError:
@@ -121,7 +127,7 @@ def parse_url_spec(raw: str):
     return raw, 1
 
 
-# ─── HTML parsing (synchronous, runs in thread pool) ─────────────────────────
+# ─── HTML parsing ─────────────────────────────────────────────────────────────
 _PARSER = None
 
 
@@ -210,7 +216,6 @@ def _get_links(container, link_classes=None):
 
 def parse_page(html_bytes: bytes, url: str, content_type: str,
                classes, ids, link_classes) -> list:
-    """CPU-bound parse — runs in executor so it never blocks the event loop."""
     soup = BeautifulSoup(html_bytes, _get_parser())
     containers = ([soup.find(id=cid) for cid in ids if soup.find(id=cid)]
                   if ids else [soup])
@@ -231,104 +236,130 @@ def parse_page(html_bytes: bytes, url: str, content_type: str,
     return results
 
 
-# ─── Async fetch core (curl_cffi) ─────────────────────────────────────────────
-async def _fetch_one(session, sem, url, content_type,
-                     classes, ids, link_classes, loop, counter, total):
+# ─── Session factory ──────────────────────────────────────────────────────────
+def make_session(base_url: str = None) -> requests.Session:
     """
-    Fetch one URL using curl_cffi's AsyncSession.
-    curl_cffi sends an exact Chrome TLS handshake (BoringSSL + JA3 fingerprint)
-    so anti-bot systems cannot distinguish it from a real browser.
+    Create a requests.Session with connection pooling.
+    If base_url given, pre-fetches the homepage to pick up any session
+    cookies the server sets before you hit the numbered pages.
     """
+    session = requests.Session()
+    session.headers.update(HEADERS)
+
+    # Increase connection pool size to match concurrency
+    adapter = requests.adapters.HTTPAdapter(
+        pool_connections=CONCURRENCY,
+        pool_maxsize=CONCURRENCY * 2,
+        max_retries=0,   # we do retries ourselves
+    )
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+
+    if base_url:
+        origin = f"{urlparse(base_url).scheme}://{urlparse(base_url).netloc}"
+        try:
+            print(f"🍪 Pre-fetching homepage to establish session: {origin}")
+            session.get(origin, timeout=REQUEST_TIMEOUT)
+            # Update Referer for subsequent requests
+            session.headers.update({"Referer": origin, "sec-fetch-site": "same-origin"})
+        except Exception:
+            pass   # non-fatal
+
+    return session
+
+
+# ─── Per-thread fetch function ────────────────────────────────────────────────
+def fetch_page_with_retry(args):
+    """
+    Runs in a thread. Uses the shared session (thread-safe for reads).
+    Returns (url, results_list).
+    """
+    session, url, content_type, classes, ids, link_classes, idx = args
+
+    # Stagger thread start times to avoid synchronized bursts
+    time.sleep(idx * STAGGER_DELAY + random.uniform(0, 0.1))
+
     for attempt in range(MAX_RETRIES + 1):
-        async with sem:
-            try:
-                resp = await session.get(url, timeout=REQUEST_TIMEOUT,
-                                         impersonate=IMPERSONATE)
+        try:
+            resp = session.get(url, timeout=REQUEST_TIMEOUT)
 
-                # Retryable server-side errors
-                if resp.status_code in (429, 500, 502, 503, 504):
-                    wait = RETRY_BACKOFF * (2 ** attempt)
-                    if attempt < MAX_RETRIES:
-                        print(f"  🔄 HTTP {resp.status_code} – retry "
-                              f"{attempt+1}/{MAX_RETRIES} in {wait:.1f}s: {url}")
-                        await asyncio.sleep(wait)
-                        continue
-                    print(f"  🚫 HTTP {resp.status_code} – gave up: {url}")
-                    return url, []
-
-                if resp.status_code >= 400:
-                    print(f"  🚫 HTTP {resp.status_code}: {url}")
-                    return url, []
-
-                html = resp.content   # bytes
-
-            except asyncio.TimeoutError:
+            if resp.status_code in (429, 500, 502, 503, 504):
                 wait = RETRY_BACKOFF * (2 ** attempt)
                 if attempt < MAX_RETRIES:
-                    print(f"  ⏱️  Timeout – retry {attempt+1}/{MAX_RETRIES} "
-                          f"in {wait:.1f}s: {url}")
-                    await asyncio.sleep(wait)
-                    continue
-                print(f"  ⏱️  Timeout – gave up: {url}")
-                return url, []
-
-            except Exception as exc:
-                wait = RETRY_BACKOFF * (2 ** attempt)
-                if attempt < MAX_RETRIES:
-                    print(f"  🌐 {type(exc).__name__} – retry "
+                    print(f"  🔄 HTTP {resp.status_code} – retry "
                           f"{attempt+1}/{MAX_RETRIES} in {wait:.1f}s: {url}")
-                    await asyncio.sleep(wait)
+                    time.sleep(wait)
                     continue
-                print(f"  🌐 {type(exc).__name__} – gave up: {url}")
+                print(f"  🚫 HTTP {resp.status_code} – gave up: {url}")
                 return url, []
 
-        # ── Success ───────────────────────────────────────────────────────────
-        results = await loop.run_in_executor(
-            None, parse_page, html, url, content_type, classes, ids, link_classes
-        )
-        counter[0] += 1
-        n   = counter[0]
-        tag = f"{len(results)} {'table(s)' if content_type == 'tables' else 'link(s)'}"
-        print(f"  {'✅' if results else '⚠️ '} [{n}/{total}] {url}  — {tag}")
-        return url, results
+            if resp.status_code >= 400:
+                print(f"  🚫 HTTP {resp.status_code}: {url}")
+                return url, []
+
+            results = parse_page(resp.content, url, content_type,
+                                 classes, ids, link_classes)
+            return url, results
+
+        except requests.exceptions.Timeout:
+            wait = RETRY_BACKOFF * (2 ** attempt)
+            if attempt < MAX_RETRIES:
+                print(f"  ⏱️  Timeout – retry {attempt+1}/{MAX_RETRIES} "
+                      f"in {wait:.1f}s: {url}")
+                time.sleep(wait)
+                continue
+            print(f"  ⏱️  Timeout – gave up: {url}")
+            return url, []
+
+        except requests.exceptions.RequestException as exc:
+            wait = RETRY_BACKOFF * (2 ** attempt)
+            if attempt < MAX_RETRIES:
+                print(f"  🌐 {type(exc).__name__} – retry "
+                      f"{attempt+1}/{MAX_RETRIES} in {wait:.1f}s: {url}")
+                time.sleep(wait)
+                continue
+            print(f"  🌐 {type(exc).__name__} – gave up: {url}")
+            return url, []
 
     return url, []
 
 
-async def _run_all(page_urls, content_type, classes, ids, link_classes):
-    from curl_cffi.requests import AsyncSession
-
-    sem     = asyncio.Semaphore(CONCURRENCY)
-    counter = [0]
-    loop    = asyncio.get_event_loop()
-
-    async def _staggered(idx, url):
-        await asyncio.sleep(idx * STAGGER_DELAY)
-        return await _fetch_one(session, sem, url, content_type,
-                                classes, ids, link_classes, loop,
-                                counter, len(page_urls))
-
-    # curl_cffi's AsyncSession handles connection pooling internally
-    async with AsyncSession() as session:
-        pairs = await asyncio.gather(
-            *[_staggered(i, url) for i, url in enumerate(page_urls)]
-        )
-
-    content = []
-    for _, items in pairs:
-        content.extend(items)
-    return content
-
-
+# ─── Parallel fetch engine ────────────────────────────────────────────────────
 def extract_url_concurrent(url_template, content_type, num_pages=1,
                             classes=None, ids=None, link_classes=None):
     page_urls = (
         [url_template.format(p) for p in range(1, num_pages + 1)]
         if "{}" in url_template else [url_template]
     )
-    print(f"⏳ Fetching {len(page_urls)} page(s) — "
-          f"{CONCURRENCY} concurrent, Chrome/{IMPERSONATE} TLS fingerprint…")
-    return asyncio.run(_run_all(page_urls, content_type, classes, ids, link_classes))
+    total = len(page_urls)
+    print(f"⏳ Fetching {total} page(s) — "
+          f"{CONCURRENCY} threads, staggered {STAGGER_DELAY}s apart…")
+
+    # One shared session: connection pool + cookies across all threads
+    session = make_session(page_urls[0])
+
+    args_list = [
+        (session, url, content_type, classes, ids, link_classes, idx)
+        for idx, url in enumerate(page_urls)
+    ]
+
+    all_content = []
+    completed   = 0
+
+    with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
+        futures = {pool.submit(fetch_page_with_retry, args): args[1]
+                   for args in args_list}
+        for future in as_completed(futures):
+            url, results = future.result()
+            completed += 1
+            if results:
+                all_content.extend(results)
+                tag = f"{len(results)} {'table(s)' if content_type == 'tables' else 'link(s)'}"
+                print(f"  ✅ [{completed}/{total}] {url}  — {tag}")
+            else:
+                print(f"  ⚠️  [{completed}/{total}] {url}  — no content")
+
+    return all_content
 
 
 # ─── Table grouping ───────────────────────────────────────────────────────────
@@ -453,10 +484,10 @@ def prompt_non_empty(prompt, field="value"):
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 def main():
-    bootstrap()   # ensure curl_cffi + lxml installed
+    bootstrap()
 
     print("\n" + "=" * 54)
-    print("🌐  XTRACT – LIGHTNING-FAST WEB CONTENT EXTRACTOR".center(54))
+    print("🌐  XTRACT – FAST WEB CONTENT EXTRACTOR".center(54))
     print("=" * 54)
 
     ct = input("\nExtract tables or links? (t/l): ").strip().lower()
