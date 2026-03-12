@@ -1,0 +1,610 @@
+#!/usr/bin/env python3
+"""
+XTRACT - Lightning-fast web content extractor
+Concurrent fetching, batched writes, clean architecture
+"""
+
+import re
+import os
+import sys
+import subprocess
+import random
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlparse, urljoin
+
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+
+# ─── One-time openpyxl import ────────────────────────────────────────────────
+try:
+    import openpyxl
+    from openpyxl.utils.dataframe import dataframe_to_rows
+    EXCEL_AVAILABLE = True
+except ImportError:
+    EXCEL_AVAILABLE = False
+
+# ─── Constants ────────────────────────────────────────────────────────────────
+MAX_WORKERS   = 20          # concurrent HTTP workers
+THROTTLE_MIN  = 0.1         # seconds – polite lower bound per worker
+THROTTLE_MAX  = 0.4         # seconds – polite upper bound per worker
+REQUEST_TIMEOUT = 12        # seconds per request
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    )
+}
+
+
+# ─── Dependency check ─────────────────────────────────────────────────────────
+def ensure_openpyxl() -> bool:
+    """Install openpyxl if missing; update global flag."""
+    global EXCEL_AVAILABLE
+    if EXCEL_AVAILABLE:
+        return True
+    print("\n❌ Missing package: openpyxl  (needed for Excel export)")
+    choice = input("Install now? (y/n): ").strip().lower()
+    if choice == "y":
+        try:
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "openpyxl"],
+                stdout=subprocess.DEVNULL,
+            )
+            import openpyxl as _openpyxl  # noqa: F401
+            from openpyxl.utils.dataframe import dataframe_to_rows as _dtr  # noqa: F401
+            globals()["openpyxl"] = _openpyxl
+            globals()["dataframe_to_rows"] = _dtr
+            EXCEL_AVAILABLE = True
+            print("✅ openpyxl installed.")
+            return True
+        except Exception:
+            print("🚨 Installation failed – CSV export will still work.")
+    return False
+
+
+# ─── Filename helpers ─────────────────────────────────────────────────────────
+def clean_sheet_name(name: str) -> str:
+    """Remove chars Excel disallows in sheet names."""
+    return re.sub(r'[\\/*?:\[\]]', "", name)[:31]
+
+
+def generate_unique_filename(base_path: str, fmt: str) -> str:
+    """
+    Return a path that doesn't exist yet.
+    Strips any existing extension from base_path before appending fmt.
+    """
+    base_no_ext = os.path.splitext(base_path)[0]
+    candidate = f"{base_no_ext}.{fmt}"
+    counter = 0
+    while os.path.exists(candidate):
+        counter += 1
+        candidate = f"{base_no_ext}_{counter}.{fmt}"
+    return candidate
+
+
+# ─── URL / pagination parsing ─────────────────────────────────────────────────
+def parse_url_spec(raw: str):
+    """
+    Returns (template_url, num_pages).
+    Handles:
+      - bare URL          → ("http://...", 1)
+      - URL ending /\\d+  → as-is, 1 page
+      - URL with {42}    → replace with {}, num_pages=42
+    """
+    raw = raw.strip()
+    if not raw:
+        return None, 0
+
+    match = re.search(r'\{(\d+)\}', raw)
+    if match:
+        try:
+            num_pages = int(match.group(1))
+        except ValueError:
+            print(f"⚠️  Could not parse page count from '{match.group(0)}' — defaulting to 1")
+            num_pages = 1
+        template = re.sub(r'\{\d+\}', '{}', raw, count=1)
+        return template, num_pages
+
+    return raw, 1
+
+
+# ─── Table extraction ─────────────────────────────────────────────────────────
+def manual_table_extraction(table) -> pd.DataFrame | None:
+    """Robust table extraction handling thead / td-as-header edge cases."""
+    try:
+        headers = []
+        header_row = None
+
+        thead = table.find("thead")
+        if thead:
+            for row in thead.find_all("tr"):
+                headers = [c.get_text(strip=True) for c in row.find_all(["th", "td"])]
+                if headers:
+                    break
+
+        if not headers:
+            ths = table.find_all("th")
+            if ths:
+                headers = [th.get_text(strip=True) for th in ths]
+
+        rows_data = []
+        tbody = table.find("tbody") or table
+        all_rows = tbody.find_all("tr")
+
+        # If no headers found yet, treat first row as header
+        start_idx = 0
+        if not headers and all_rows:
+            first_row = all_rows[0]
+            header_row = first_row
+            headers = [c.get_text(strip=True) for c in first_row.find_all(["th", "td"])]
+            start_idx = 1
+
+        for row in all_rows[start_idx:]:
+            if row is header_row:
+                continue
+            cols = row.find_all(["td", "th"])
+            if cols:
+                rows_data.append([c.get_text(strip=True) for c in cols])
+
+        if not rows_data:
+            return None
+
+        max_cols = max(len(r) for r in rows_data)
+
+        # Align header length to data width
+        if headers:
+            if len(headers) > max_cols:
+                headers = headers[:max_cols]
+            elif len(headers) < max_cols:
+                headers += [f"Column_{i+1}" for i in range(len(headers), max_cols)]
+
+        padded = [r + [""] * (max_cols - len(r)) for r in rows_data]
+
+        return pd.DataFrame(padded, columns=headers if headers else None)
+
+    except Exception as exc:
+        print(f"    ⚠️  Table parse error: {exc}")
+        return None
+
+
+def extract_tables_from_container(container, table_classes=None):
+    if table_classes:
+        tables = []
+        for cls in table_classes:
+            tables.extend(container.find_all("table", class_=cls))
+        return tables
+    return container.find_all("table")
+
+
+# ─── Link extraction ──────────────────────────────────────────────────────────
+def extract_links_from_container(container, link_classes=None):
+    links = []
+    for a in container.find_all("a", href=True):
+        href = a["href"]
+        if not href or href.startswith(("javascript:", "mailto:", "tel:")):
+            continue
+        text = a.get_text(strip=True)
+        if link_classes:
+            el_classes = a.get("class", [])
+            # Save ALL matching classes, not just the first
+            matched = [c for c in link_classes if c in el_classes]
+            if matched:
+                links.append({"url": href, "text": text, "classes": ",".join(matched)})
+        else:
+            links.append({"url": href, "text": text})
+    return links
+
+
+# ─── Core HTTP fetch (runs in thread) ────────────────────────────────────────
+def fetch_page(url: str, content_type: str, classes=None, ids=None, link_classes=None):
+    """
+    Fetch a single page and extract content.
+    Returns (url, list_of_results) or (url, []) on failure.
+    """
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+    except requests.exceptions.Timeout:
+        print(f"  ⏱️  Timeout: {url}")
+        return url, []
+    except requests.exceptions.HTTPError as exc:
+        print(f"  🚫 HTTP {exc.response.status_code}: {url}")
+        return url, []
+    except requests.exceptions.RequestException as exc:
+        print(f"  🌐 Network error ({type(exc).__name__}): {url}")
+        return url, []
+
+    try:
+        soup = BeautifulSoup(response.content, "html.parser")
+    except Exception as exc:
+        print(f"  ⚠️  Parse error on {url}: {exc}")
+        return url, []
+
+    containers = []
+    if ids:
+        for cid in ids:
+            el = soup.find(id=cid)
+            if el:
+                containers.append(el)
+    if not containers:
+        containers = [soup]
+
+    results = []
+    for container in containers:
+        if content_type == "tables":
+            for table in extract_tables_from_container(container, classes):
+                df = manual_table_extraction(table)
+                if df is not None and not df.empty:
+                    results.append(df)
+        elif content_type == "links":
+            results.extend(extract_links_from_container(container, link_classes))
+
+    # Polite throttle per worker (short, randomised)
+    time.sleep(random.uniform(THROTTLE_MIN, THROTTLE_MAX))
+    return url, results
+
+
+# ─── Concurrent extraction engine ────────────────────────────────────────────
+def extract_url_concurrent(
+    url_template: str,
+    content_type: str,
+    num_pages: int = 1,
+    classes=None,
+    ids=None,
+    link_classes=None,
+) -> list:
+    """
+    Fetch all pages concurrently.  Returns flat list of results.
+    Target: 1 000 pages ≤ 60 s (20 workers × ~0.5 s/page avg = 25 s).
+    """
+    if "{}" in url_template:
+        page_urls = [url_template.format(p) for p in range(1, num_pages + 1)]
+    else:
+        page_urls = [url_template]
+
+    total = len(page_urls)
+    print(f"⏳ Fetching {total} page(s) with up to {MAX_WORKERS} concurrent workers…")
+
+    all_content = []
+    completed = 0
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = {
+            pool.submit(fetch_page, u, content_type, classes, ids, link_classes): u
+            for u in page_urls
+        }
+        for future in as_completed(futures):
+            url, results = future.result()
+            completed += 1
+            if results:
+                if content_type == "tables":
+                    all_content.extend(results)
+                    print(
+                        f"  ✅ [{completed}/{total}] {url}  — {len(results)} table(s)"
+                    )
+                else:
+                    # Resolve relative links to absolute
+                    for link in results:
+                        link["absolute_url"] = urljoin(url, link["url"])
+                    all_content.extend(results)
+                    print(
+                        f"  ✅ [{completed}/{total}] {url}  — {len(results)} link(s)"
+                    )
+            else:
+                print(f"  ⚠️  [{completed}/{total}] {url}  — no content")
+
+    return all_content
+
+
+# ─── Grouping ─────────────────────────────────────────────────────────────────
+def group_tables(tables: list) -> list:
+    """Group consecutive tables that share identical column headers."""
+    if not tables:
+        return []
+    groups, current = [], [tables[0]]
+    for table in tables[1:]:
+        if list(table.columns) == list(current[-1].columns):
+            current.append(table)
+        else:
+            groups.append(current)
+            current = [table]
+    groups.append(current)
+    return groups
+
+
+# ─── Save helpers ─────────────────────────────────────────────────────────────
+def _write_table_groups_to_sheet(worksheet, table_groups):
+    """Write grouped tables into an openpyxl worksheet."""
+    current_row = 1
+    for g_idx, group in enumerate(table_groups):
+        worksheet.cell(row=current_row, column=1, value=f"Table Group {g_idx + 1}")
+        current_row += 1
+        for col_idx, header in enumerate(group[0].columns.tolist(), 1):
+            worksheet.cell(row=current_row, column=col_idx, value=header)
+        current_row += 1
+        for table in group:
+            for _, row in table.iterrows():
+                for col_idx, value in enumerate(row, 1):
+                    worksheet.cell(row=current_row, column=col_idx, value=value)
+                current_row += 1
+        current_row += 5  # gap between groups
+
+
+def save_tables_excel(tables: list, output_path: str, source_url: str = None) -> bool:
+    """Save all tables into one Excel file with grouped sheets."""
+    if not EXCEL_AVAILABLE:
+        print("❌ openpyxl not available – saving as CSV instead.")
+        csv_path = os.path.splitext(output_path)[0] + ".csv"
+        return save_tables_csv(tables, csv_path)
+    try:
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+        domain = urlparse(source_url).netloc.replace("www.", "")[:15] if source_url else "Data"
+        sheet_name = clean_sheet_name(f"{domain}_Data")
+        ws = wb.create_sheet(sheet_name)
+        _write_table_groups_to_sheet(ws, group_tables(tables))
+        wb.save(output_path)
+        print(f"💾 Excel saved → {os.path.abspath(output_path)}")
+        return True
+    except Exception as exc:
+        print(f"🚨 Excel save failed: {exc}")
+        return False
+
+
+def save_tables_csv(tables: list, output_path: str) -> bool:
+    try:
+        pd.concat(tables, ignore_index=True).to_csv(output_path, index=False)
+        print(f"💾 CSV saved → {os.path.abspath(output_path)}")
+        return True
+    except Exception as exc:
+        print(f"🚨 CSV save failed: {exc}")
+        return False
+
+
+def save_links(links: list, output_path: str, source_url: str = None) -> bool:
+    df = pd.DataFrame(links)
+    ext = os.path.splitext(output_path)[1].lower()
+    try:
+        if ext == ".txt":
+            with open(output_path, "w") as f:
+                for link in links:
+                    f.write(link.get("absolute_url", link["url"]) + "\n")
+        elif ext == ".csv":
+            df.to_csv(output_path, index=False)
+        elif ext == ".xlsx":
+            if not EXCEL_AVAILABLE:
+                print("❌ openpyxl missing – saving as CSV.")
+                return save_links(links, os.path.splitext(output_path)[0] + ".csv", source_url)
+            domain = urlparse(source_url).netloc.replace("www.", "")[:15] if source_url else "Links"
+            sheet_name = clean_sheet_name(f"{domain}_Links")
+            with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+        else:
+            print(f"❌ Unsupported format '{ext}' – saving as links.txt")
+            return save_links(links, "links.txt", source_url)
+        print(f"💾 Saved → {os.path.abspath(output_path)}")
+        return True
+    except Exception as exc:
+        print(f"🚨 Save failed: {exc}")
+        return False
+
+
+def save_content(content, content_type: str, output_path: str, source_url: str = None) -> bool:
+    """Unified save dispatcher."""
+    if not content:
+        print("❌ No content to save.")
+        return False
+    out_dir = os.path.dirname(output_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    ext = os.path.splitext(output_path)[1].lower()
+    if content_type == "tables":
+        if ext == ".csv":
+            return save_tables_csv(content, output_path)
+        elif ext == ".xlsx":
+            return save_tables_excel(content, output_path, source_url)
+        else:
+            print("❌ Unsupported format – defaulting to output.xlsx")
+            return save_content(content, content_type, "output.xlsx", source_url)
+    else:  # links
+        return save_links(content, output_path, source_url)
+
+
+# ─── Input helpers ────────────────────────────────────────────────────────────
+def parse_comma_separated(raw: str):
+    if not raw:
+        return None
+    items = [x.strip() for x in raw.split(",") if x.strip()]
+    return items or None
+
+
+def prompt_non_empty(prompt: str, field: str = "value") -> str:
+    """Keep asking until a non-empty string is given."""
+    while True:
+        val = input(prompt).strip()
+        if val:
+            return val
+        print(f"❌ {field} cannot be empty – please try again.")
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+def main():
+    print("\n" + "=" * 54)
+    print("🌐  XTRACT – LIGHTNING-FAST WEB CONTENT EXTRACTOR".center(54))
+    print("=" * 54)
+
+    # ── Content type ──────────────────────────────────────────
+    content_type = input("\nExtract tables or links? (t/l): ").strip().lower()
+    if content_type not in ("t", "l"):
+        print("❌ Invalid selection.")
+        return
+    content_type = "tables" if content_type == "t" else "links"
+
+    # ── Optional filters ──────────────────────────────────────
+    classes = ids = link_classes = None
+    if content_type == "tables":
+        classes = parse_comma_separated(
+            input("\nTable class(es) – optional, comma-separated:\n> ")
+        )
+        ids = parse_comma_separated(
+            input("\nContainer ID(s) – optional, comma-separated:\n> ")
+        )
+    else:
+        link_classes = parse_comma_separated(
+            input("\nLink class(es) – optional, comma-separated:\n> ")
+        )
+        ids = parse_comma_separated(
+            input("\nContainer ID(s) – optional, comma-separated:\n> ")
+        )
+
+    # ── Single vs Multiple URLs ───────────────────────────────
+    mode = input("\nSingle URL or Multiple URLs? (1/2): ").strip()
+
+    if mode == "1":
+        raw = prompt_non_empty("\nEnter website URL:\n> ", "URL")
+        url_template, num_pages = parse_url_spec(raw)
+        if not url_template:
+            print("❌ Invalid URL.")
+            return
+
+        default_ext  = "xlsx" if content_type == "tables" else "txt"
+        default_name = generate_unique_filename(
+            urlparse(url_template).netloc.replace("www.", "")[:20], default_ext
+        )
+        filename = input(
+            f"\nOutput filename (default: {default_name}):\n> "
+        ).strip() or default_name
+        if "." not in os.path.basename(filename):
+            filename += f".{default_ext}"
+
+        t0 = time.perf_counter()
+        content = extract_url_concurrent(
+            url_template, content_type, num_pages, classes, ids, link_classes
+        )
+        elapsed = time.perf_counter() - t0
+        print(f"\n⚡ Fetched {num_pages} page(s) in {elapsed:.1f}s")
+
+        if content:
+            save_content(content, content_type, filename, url_template)
+        else:
+            print("❌ No content extracted. Check URL and parameters.")
+
+    elif mode == "2":
+        print("\nEnter URLs (space/comma separated, multiple lines OK).")
+        print("Press Enter on an empty line when done:")
+        lines = []
+        while True:
+            line = input("> ").strip()
+            if line:
+                lines.append(line)
+            else:
+                break
+
+        raw_urls = re.split(r"[,\s]+", " ".join(lines))
+        url_specs = []
+        for raw in raw_urls:
+            if not raw:
+                continue
+            tpl, n = parse_url_spec(raw)
+            if tpl:
+                url_specs.append((tpl, n))
+
+        if not url_specs:
+            print("❌ No valid URLs found.")
+            return
+        print(f"\nFound {len(url_specs)} URL(s) to process.")
+
+        output_mode = input("\nSave in single file or multiple files? (1/2): ").strip()
+
+        if output_mode == "1":
+            default_ext = "xlsx" if content_type == "tables" else "csv"
+            raw_name = input(
+                f"\nOutput filename (default: combined.{default_ext}):\n> "
+            ).strip()
+            filename = raw_name if raw_name else f"combined.{default_ext}"
+            if "." not in os.path.basename(filename):
+                filename += f".{default_ext}"
+
+            if content_type == "tables":
+                if not ensure_openpyxl():
+                    filename = os.path.splitext(filename)[0] + ".csv"
+
+                if filename.endswith(".xlsx"):
+                    # Build one workbook, one sheet per URL
+                    wb = openpyxl.Workbook()
+                    wb.remove(wb.active)
+                    t0 = time.perf_counter()
+                    for i, (tpl, n) in enumerate(url_specs):
+                        print(f"\n🔗 URL {i+1}/{len(url_specs)}: {tpl}")
+                        content = extract_url_concurrent(
+                            tpl, content_type, n, classes, ids, link_classes
+                        )
+                        if content:
+                            domain = urlparse(tpl).netloc.replace("www.", "")[:15]
+                            ws = wb.create_sheet(clean_sheet_name(f"{domain}_{i+1}"))
+                            _write_table_groups_to_sheet(ws, group_tables(content))
+                            print(f"  💾 Sheet added: {ws.title}")
+                        else:
+                            print(f"  ⚠️  No content for {tpl}")
+                    elapsed = time.perf_counter() - t0
+                    wb.save(filename)
+                    print(
+                        f"\n⚡ Done in {elapsed:.1f}s — "
+                        f"{len(wb.sheetnames)} sheet(s) → {os.path.abspath(filename)}"
+                    )
+                else:  # CSV fallback
+                    all_content = []
+                    t0 = time.perf_counter()
+                    for i, (tpl, n) in enumerate(url_specs):
+                        print(f"\n🔗 URL {i+1}/{len(url_specs)}: {tpl}")
+                        all_content.extend(
+                            extract_url_concurrent(tpl, content_type, n, classes, ids, link_classes)
+                        )
+                    elapsed = time.perf_counter() - t0
+                    print(f"\n⚡ Fetched all pages in {elapsed:.1f}s")
+                    save_content(all_content, content_type, filename)
+            else:
+                all_content = []
+                t0 = time.perf_counter()
+                for i, (tpl, n) in enumerate(url_specs):
+                    print(f"\n🔗 URL {i+1}/{len(url_specs)}: {tpl}")
+                    all_content.extend(
+                        extract_url_concurrent(tpl, content_type, n, classes, ids, link_classes)
+                    )
+                elapsed = time.perf_counter() - t0
+                print(f"\n⚡ Fetched all pages in {elapsed:.1f}s")
+                save_content(all_content, content_type, filename)
+
+        elif output_mode == "2":
+            out_dir = input(
+                "\nOutput directory (default: current directory):\n> "
+            ).strip()
+            if out_dir:
+                os.makedirs(out_dir, exist_ok=True)
+
+            t0 = time.perf_counter()
+            for i, (tpl, n) in enumerate(url_specs):
+                print(f"\n🔗 URL {i+1}/{len(url_specs)}: {tpl}")
+                content = extract_url_concurrent(
+                    tpl, content_type, n, classes, ids, link_classes
+                )
+                if content:
+                    default_ext = "xlsx" if content_type == "tables" else "txt"
+                    base = urlparse(tpl).netloc.replace("www.", "")[:20]
+                    base_path = os.path.join(out_dir, base) if out_dir else base
+                    fname = generate_unique_filename(base_path, default_ext)
+                    save_content(content, content_type, fname, tpl)
+            elapsed = time.perf_counter() - t0
+            print(f"\n⚡ All URLs processed in {elapsed:.1f}s")
+
+    print("\n✅ Extraction complete!")
+    print("=" * 54 + "\n")
+
+
+if __name__ == "__main__":
+    main()
