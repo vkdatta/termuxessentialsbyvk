@@ -8,7 +8,7 @@
 
 <br/><br/>
 
-# 🐚 bashbasicsbyvk
+## 🐚 bashbasicsbyvk
 
 ### A lightweight, open-source collection of Bash-Python scripts made to optimize workflows and file management in shell environments.
 
