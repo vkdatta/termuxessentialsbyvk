@@ -409,7 +409,7 @@ if [ -n "$group_prefix" ]; then
 local_arr=()
 # Use find + case-insensitive bash filter so "Z" prefix matches both zcat and Zcat
 while IFS= read -r -d '' _f; do
-local _bn="${_f##*/}"
+_bn="${_f##*/}"
 [[ "$_bn" == "." || "$_bn" == ".." ]] && continue
 ! $show_hidden_files && [[ "$_bn" == .* ]] && continue
 [[ "${_bn,,}" != "$group_prefix"* ]] && continue
@@ -586,16 +586,16 @@ echo "Select group number to browse for rename:"
 read -p "Group number: " gnum
 if [[ $gnum =~ ^[0-9]+$ ]] && [ "$gnum" -ge 1 ] && [ "$gnum" -le "${#imaginary_map[@]}" ]; then
 ch="${imaginary_map[$((gnum-1))]}"
-local ch_lower="${ch,,}"
+ch_lower="${ch,,}"
 items=()
 # find + case-insensitive filter: handles zcat, Zcat, ZCAT all under "Z" group
 while IFS= read -r -d \'\' _f; do
-local _bn="${_f##*/}"
+_bn="${_f##*/}"
 [[ "$_bn" == "." || "$_bn" == ".." ]] && continue
 ! $show_hidden_files && [[ "$_bn" == .* ]] && continue
-local _bn_lower="${_bn,,}"
+_bn_lower="${_bn,,}"
 [[ "$_bn_lower" != "$group_prefix"* ]] && continue
-local _next="${_bn_lower:${#group_prefix}:1}"
+_next="${_bn_lower:${#group_prefix}:1}"
 if [ "$ch" == "#" ]; then
 [[ "$_next" =~ ^[a-z]$ ]] && continue
 else
