@@ -27,21 +27,67 @@ except ImportError:
     EXCEL_AVAILABLE = False
 
 # ─── Tuning ───────────────────────────────────────────────────────────────────
-CONCURRENCY     = 10    # simultaneous in-flight requests (50 triggered burst-blocking)
+CONCURRENCY     = 10    # simultaneous in-flight requests
 REQUEST_TIMEOUT = 15    # seconds (connect + read combined)
 THROTTLE        = 0.0   # extra per-request delay (0 = off)
 STAGGER_DELAY   = 0.05  # seconds between launching each coroutine; spreads initial burst
 MAX_RETRIES     = 3     # retry a failed/rate-limited request this many times
 RETRY_BACKOFF   = 1.5   # seconds for first retry wait; doubles each attempt
+
+# Full Chrome 125 header set — anti-bot systems check every one of these.
+# aiohttp's defaults were missing sec-ch-ua / sec-fetch-* which caused 403s.
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/125.0.0.0 Safari/537.36"
     ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
     "Accept-Encoding": "gzip, deflate, br",
-    "Accept": "text/html,application/xhtml+xml,*/*",
+    "sec-ch-ua": '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "document",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-site": "none",
+    "sec-fetch-user": "?1",
+    "upgrade-insecure-requests": "1",
+    "cache-control": "max-age=0",
+    "connection": "keep-alive",
 }
+
+
+def _chrome_ssl_context():
+    """
+    Build an SSL context whose cipher suite order matches Chrome 125.
+    Anti-bot systems fingerprint the TLS handshake (JA3 hash); aiohttp's
+    default context has a different cipher order and gets flagged.
+    """
+    import ssl
+    ctx = ssl.create_default_context()
+    # Chrome 125 cipher preference order (TLS 1.3 first, then 1.2 ECDHE suites)
+    ctx.set_ciphers(
+        "TLS_AES_128_GCM_SHA256:"
+        "TLS_AES_256_GCM_SHA384:"
+        "TLS_CHACHA20_POLY1305_SHA256:"
+        "ECDHE-ECDSA-AES128-GCM-SHA256:"
+        "ECDHE-RSA-AES128-GCM-SHA256:"
+        "ECDHE-ECDSA-AES256-GCM-SHA384:"
+        "ECDHE-RSA-AES256-GCM-SHA384:"
+        "ECDHE-ECDSA-CHACHA20-POLY1305:"
+        "ECDHE-RSA-CHACHA20-POLY1305:"
+        "ECDHE-RSA-AES128-SHA:"
+        "ECDHE-RSA-AES256-SHA:"
+        "AES128-GCM-SHA256:"
+        "AES256-GCM-SHA384:"
+        "AES128-SHA:"
+        "AES256-SHA"
+    )
+    # Chrome negotiates h2 then http/1.1 via ALPN
+    ctx.set_alpn_protocols(["h2", "http/1.1"])
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    return ctx
 
 
 # ─── Dependency helpers ───────────────────────────────────────────────────────
@@ -302,17 +348,23 @@ async def _run_all(page_urls, content_type, classes, ids, link_classes):
         limit=CONCURRENCY,
         ttl_dns_cache=300,
         enable_cleanup_closed=True,
+        ssl=_chrome_ssl_context(),   # Chrome TLS fingerprint — blocks aiohttp default
     )
     counter = [0]
     loop    = asyncio.get_event_loop()
 
     async def _staggered(idx, url):
-        """Small per-task startup delay so requests don't all fire at t=0."""
         await asyncio.sleep(idx * STAGGER_DELAY)
         return await _fetch_one(session, sem, url, content_type, classes, ids,
                                 link_classes, loop, counter, len(page_urls))
 
-    async with aiohttp.ClientSession(headers=HEADERS, connector=connector) as session:
+    # cookie_jar=aiohttp.CookieJar() lets the session accumulate cookies across
+    # requests on the same domain, just like a real browser session would
+    async with aiohttp.ClientSession(
+        headers=HEADERS,
+        connector=connector,
+        cookie_jar=aiohttp.CookieJar(),
+    ) as session:
         pairs = await asyncio.gather(
             *[_staggered(i, url) for i, url in enumerate(page_urls)]
         )
