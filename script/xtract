@@ -27,10 +27,12 @@ except ImportError:
     EXCEL_AVAILABLE = False
 
 # ─── Tuning ───────────────────────────────────────────────────────────────────
-CONCURRENCY     = 50    # max simultaneous in-flight HTTP requests
+CONCURRENCY     = 10    # simultaneous in-flight requests (50 triggered burst-blocking)
 REQUEST_TIMEOUT = 15    # seconds (connect + read combined)
-THROTTLE        = 0.0   # per-request delay seconds (0 = disabled)
-                        # raise to e.g. 0.2 only if the server rate-limits you
+THROTTLE        = 0.0   # extra per-request delay (0 = off)
+STAGGER_DELAY   = 0.05  # seconds between launching each coroutine; spreads initial burst
+MAX_RETRIES     = 3     # retry a failed/rate-limited request this many times
+RETRY_BACKOFF   = 1.5   # seconds for first retry wait; doubles each attempt
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -236,25 +238,51 @@ def parse_page(html_bytes: bytes, url: str, content_type: str,
 async def _fetch_one(
     session, sem, url, content_type, classes, ids, link_classes, loop, counter, total
 ):
-    async with sem:
-        try:
-            timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
-            async with session.get(url, timeout=timeout) as resp:
-                if resp.status >= 400:
-                    print(f"  🚫 HTTP {resp.status}: {url}")
-                    return url, []
-                html = await resp.read()
-        except asyncio.TimeoutError:
-            print(f"  ⏱️  Timeout: {url}")
-            return url, []
-        except aiohttp.ClientError as exc:
-            print(f"  🌐 {type(exc).__name__}: {url}")
-            return url, []
+    """Fetch one URL with automatic retry + exponential backoff."""
+    timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
 
+    for attempt in range(MAX_RETRIES + 1):
+        async with sem:
+            try:
+                async with session.get(url, timeout=timeout) as resp:
+                    # 429 = rate limited, 5xx = server error → both worth retrying
+                    if resp.status in (429, 500, 502, 503, 504):
+                        wait = RETRY_BACKOFF * (2 ** attempt)
+                        if attempt < MAX_RETRIES:
+                            print(f"  🔄 HTTP {resp.status} – retry {attempt+1}/{MAX_RETRIES} "
+                                  f"in {wait:.1f}s: {url}")
+                            await asyncio.sleep(wait)
+                            continue
+                        print(f"  🚫 HTTP {resp.status} – gave up after {MAX_RETRIES} retries: {url}")
+                        return url, []
+                    if resp.status >= 400:
+                        print(f"  🚫 HTTP {resp.status}: {url}")
+                        return url, []
+                    html = await resp.read()
+
+            except asyncio.TimeoutError:
+                wait = RETRY_BACKOFF * (2 ** attempt)
+                if attempt < MAX_RETRIES:
+                    print(f"  ⏱️  Timeout – retry {attempt+1}/{MAX_RETRIES} in {wait:.1f}s: {url}")
+                    await asyncio.sleep(wait)
+                    continue
+                print(f"  ⏱️  Timeout – gave up: {url}")
+                return url, []
+
+            except aiohttp.ClientError as exc:
+                wait = RETRY_BACKOFF * (2 ** attempt)
+                if attempt < MAX_RETRIES:
+                    print(f"  🌐 {type(exc).__name__} – retry {attempt+1}/{MAX_RETRIES} "
+                          f"in {wait:.1f}s: {url}")
+                    await asyncio.sleep(wait)
+                    continue
+                print(f"  🌐 {type(exc).__name__} – gave up: {url}")
+                return url, []
+
+        # ── Success path ──────────────────────────────────────────────────────
         if THROTTLE:
             await asyncio.sleep(THROTTLE)
 
-        # Offload BeautifulSoup to thread pool → event loop stays free
         results = await loop.run_in_executor(
             None, parse_page, html, url, content_type, classes, ids, link_classes
         )
@@ -264,6 +292,8 @@ async def _fetch_one(
         tag = f"{len(results)} {'table(s)' if content_type == 'tables' else 'link(s)'}"
         print(f"  {'✅' if results else '⚠️ '} [{n}/{total}] {url}  — {tag}")
         return url, results
+
+    return url, []   # unreachable, but satisfies type checkers
 
 
 async def _run_all(page_urls, content_type, classes, ids, link_classes):
@@ -276,13 +306,16 @@ async def _run_all(page_urls, content_type, classes, ids, link_classes):
     counter = [0]
     loop    = asyncio.get_event_loop()
 
+    async def _staggered(idx, url):
+        """Small per-task startup delay so requests don't all fire at t=0."""
+        await asyncio.sleep(idx * STAGGER_DELAY)
+        return await _fetch_one(session, sem, url, content_type, classes, ids,
+                                link_classes, loop, counter, len(page_urls))
+
     async with aiohttp.ClientSession(headers=HEADERS, connector=connector) as session:
-        tasks = [
-            _fetch_one(session, sem, url, content_type, classes, ids,
-                       link_classes, loop, counter, len(page_urls))
-            for url in page_urls
-        ]
-        pairs = await asyncio.gather(*tasks)
+        pairs = await asyncio.gather(
+            *[_staggered(i, url) for i, url in enumerate(page_urls)]
+        )
 
     content = []
     for _, items in pairs:
@@ -297,7 +330,8 @@ def extract_url_concurrent(url_template, content_type, num_pages=1,
         if "{}" in url_template else [url_template]
     )
     print(f"⏳ Fetching {len(page_urls)} page(s) — "
-          f"up to {CONCURRENCY} simultaneous requests…")
+          f"{CONCURRENCY} concurrent, staggered {STAGGER_DELAY}s apart, "
+          f"up to {MAX_RETRIES} retries per page…")
     return asyncio.run(_run_all(page_urls, content_type, classes, ids, link_classes))
 
 
