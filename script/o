@@ -60,22 +60,24 @@ fi
 selected_items=()
 for idx in "${indices[@]}"; do
 local ch="${imaginary_map[$((idx-1))]}"
+local ch_lower="${ch,,}"
+# Use find + case-insensitive filter to handle any filename capitalisation
+while IFS= read -r -d '' f; do
+local bn="${f##*/}"
+[[ "$bn" == "." || "$bn" == ".." ]] && continue
+! $show_hidden_files && [[ "$bn" == .* ]] && continue
+local bn_lower="${bn,,}"
+# must match prefix
+[[ "$bn_lower" != "$pfx"* ]] && continue
+# next char (after prefix) must match this group
+local next_char="${bn_lower:${#pfx}:1}"
 if [ "$ch" == "#" ]; then
-local specials=(0 1 2 3 4 5 6 7 8 9 _ - . "(" "[" "{")
-for s in "${specials[@]}"; do
-for f in "$p/${pfx}${s}"* "$p"/.${pfx}${s}*; do
-[ -e "$f" ] || continue
-selected_items+=("$f")
-done
-done
+[[ "$next_char" =~ ^[a-z]$ ]] && continue   # letter → not in # group
 else
-local lower="${ch,,}"
-for f in "$p/${pfx}${ch}"* "$p/${pfx}${lower}"* \
-         "$p"/.${pfx}${ch}* "$p"/.${pfx}${lower}*; do
-[ -e "$f" ] || continue
-selected_items+=("$f")
-done
+[[ "$next_char" != "$ch_lower" ]] && continue
 fi
+selected_items+=("$f")
+done < <(find "$p" -maxdepth 1 -mindepth 1 -print0 2>/dev/null)
 done
 local -A _seen=()
 local unique=()
@@ -269,19 +271,14 @@ build_items_for_prefix() {
 local p="$1"
 local pfx="$2"
 items=()
-if $show_hidden_files; then
-for f in "$p/${pfx}"* "$p"/.${pfx}*; do
-[ -e "$f" ] || continue
-local bn; bn=$(basename "$f")
+# pfx is stored lowercase; compare against bn lowercase for case-insensitive match
+while IFS= read -r -d '' f; do
+local bn="${f##*/}"
 [[ "$bn" == "." || "$bn" == ".." ]] && continue
+! $show_hidden_files && [[ "$bn" == .* ]] && continue
+[[ "${bn,,}" != "$pfx"* ]] && continue
 items+=("$f")
-done
-else
-for f in "$p/${pfx}"*; do
-[ -e "$f" ] || continue
-items+=("$f")
-done
-fi
+done < <(find "$p" -maxdepth 1 -mindepth 1 -print0 2>/dev/null)
 }
 
 build_all_items() {
@@ -322,14 +319,15 @@ continue
 fi
 
 # skip items that are shorter than or equal to prefix length
-# (they match the prefix exactly or are a subset — no "next char")
+# (they match the prefix exactly or are a subset â no "next char")
 [[ ${#bn} -le ${#pfx} ]] && continue
 
-# skip items that don't start with the current prefix
-[[ "$bn" != "$pfx"* ]] && continue
+# case-insensitive prefix match (pfx stored lowercase, compare bn lowercase)
+local bn_lower="${bn,,}"
+[[ "$bn_lower" != "$pfx"* ]] && continue
 
-# extract the next character AFTER the prefix (prefix-aware)
-local next="${bn:${#pfx}:1}"
+# extract the next character AFTER the prefix (prefix-aware, case-insensitive)
+local next="${bn_lower:${#pfx}:1}"
 local upper="${next^^}"
 
 if [[ "$upper" =~ ^[A-Z]$ ]]; then
@@ -397,7 +395,7 @@ echo "🚚 MOVE MODE: Select destination folder"
 elif $copy_mode; then
 echo "📋 COPY MODE: Select destination folder"
 else
-echo "📂 Location: $path${group_prefix:+ [filter: ${group_prefix}*]}"
+echo "📂 Location: $path${group_prefix:+ [filter: ${group_prefix^^}*]}"
 fi
 
 total=$(count_items_in_path "$path")
@@ -409,19 +407,14 @@ if [ "$total" -gt "${index_mode_threshold:-200}" ] && ! $force_show; then
 imaginary_mode=true
 if [ -n "$group_prefix" ]; then
 local_arr=()
-if $show_hidden_files; then
-for f in "$path/${group_prefix}"* "$path"/.${group_prefix}*; do
-[ -e "$f" ] || continue
-bn=$(basename "$f")
-[[ "$bn" == "." || "$bn" == ".." ]] && continue
-local_arr+=("$f")
-done
-else
-for f in "$path/${group_prefix}"*; do
-[ -e "$f" ] || continue
-local_arr+=("$f")
-done
-fi
+# Use find + case-insensitive bash filter so "Z" prefix matches both zcat and Zcat
+while IFS= read -r -d '' _f; do
+local _bn="${_f##*/}"
+[[ "$_bn" == "." || "$_bn" == ".." ]] && continue
+! $show_hidden_files && [[ "$_bn" == .* ]] && continue
+[[ "${_bn,,}" != "$group_prefix"* ]] && continue
+local_arr+=("$_f")
+done < <(find "$path" -maxdepth 1 -mindepth 1 -print0 2>/dev/null)
 pfx_count="${#local_arr[@]}"
 if [ "$pfx_count" -le "${index_mode_threshold:-200}" ]; then
 imaginary_mode=false
@@ -459,7 +452,7 @@ else
 echo "u) Up directory   cd) Change directory   t) Transfer (move/copy)"
 echo "d) Delete   c) Create   f) Find   x) Organise   r) Rename"
 echo "q/h) Quit/Home   s) Settings   forceshow) Toggle force show all"
-[ -n "$group_prefix" ] && echo "back) Remove last prefix char (current: ${group_prefix}*)"
+[ -n "$group_prefix" ] && echo "back) Remove last prefix char (current: ${group_prefix^^}*)"
 fi
 
 read -p "Select: " choice
@@ -593,29 +586,23 @@ echo "Select group number to browse for rename:"
 read -p "Group number: " gnum
 if [[ $gnum =~ ^[0-9]+$ ]] && [ "$gnum" -ge 1 ] && [ "$gnum" -le "${#imaginary_map[@]}" ]; then
 ch="${imaginary_map[$((gnum-1))]}"
+local ch_lower="${ch,,}"
 items=()
+# find + case-insensitive filter: handles zcat, Zcat, ZCAT all under "Z" group
+while IFS= read -r -d \'\' _f; do
+local _bn="${_f##*/}"
+[[ "$_bn" == "." || "$_bn" == ".." ]] && continue
+! $show_hidden_files && [[ "$_bn" == .* ]] && continue
+local _bn_lower="${_bn,,}"
+[[ "$_bn_lower" != "$group_prefix"* ]] && continue
+local _next="${_bn_lower:${#group_prefix}:1}"
 if [ "$ch" == "#" ]; then
-local specials=(0 1 2 3 4 5 6 7 8 9 _ - . "(" "[" "{")
-for s in "${specials[@]}"; do
-for f in "$path/${group_prefix}${s}"* "$path"/.${group_prefix}${s}*; do
-[ -e "$f" ] || continue
-items+=("$f")
-done
-done
+[[ "$_next" =~ ^[a-z]$ ]] && continue
 else
-local lower="${ch,,}"
-for f in "$path/${group_prefix}${ch}"* "$path/${group_prefix}${lower}"* \
-         "$path"/.${group_prefix}${ch}* "$path"/.${group_prefix}${lower}*; do
-[ -e "$f" ] || continue
-items+=("$f")
-done
+[[ "$_next" != "$ch_lower" ]] && continue
 fi
-local -A _rseen=()
-local _runiq=()
-for f in "${items[@]}"; do
-[ -z "${_rseen[$f]+x}" ] && _runiq+=("$f") && _rseen["$f"]=1
-done
-items=("${_runiq[@]}")
+items+=("$_f")
+done < <(find "$path" -maxdepth 1 -mindepth 1 -print0 2>/dev/null)
 idx=1
 for item in "${items[@]}"; do
 [ -d "$item" ] && icon="📁" || icon="📄"
@@ -674,7 +661,9 @@ if $matched; then
 if [ "$ch" == "#" ]; then
 group_prefix="${group_prefix}#"
 else
-group_prefix="${group_prefix}${ch}"
+# store prefix lowercase so case-insensitive matching works
+# (filenames like zcat, Zcat, ZCAT all need to match prefix "z")
+group_prefix="${group_prefix}${ch,,}"
 fi
 force_show=false
 else
