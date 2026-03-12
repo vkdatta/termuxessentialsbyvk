@@ -8,7 +8,8 @@ mkdir -p "$CONFIG_DIR"
 DEFAULT_SHOW_HIDDEN_FILES=false
 DEFAULT_INDEX_MODE_THRESHOLD=200
 DEFAULT_TERMINAL_BG_COLOR="000000"
-DEFAULT_TERMINAL_TEXT_COLOR=""
+DEFAULT_TERMINAL_TEXT_COLOR_NORMAL="FFFFFF"
+DEFAULT_TERMINAL_TEXT_COLOR_CODER="00D000"
 
 unset show_hidden_files
 unset index_mode_threshold
@@ -20,18 +21,9 @@ unset terminal_text_color
 : "${show_hidden_files:=$DEFAULT_SHOW_HIDDEN_FILES}"
 : "${index_mode_threshold:=$DEFAULT_INDEX_MODE_THRESHOLD}"
 : "${terminal_bg_color:=$DEFAULT_TERMINAL_BG_COLOR}"
+: "${terminal_text_color:=$DEFAULT_TERMINAL_TEXT_COLOR_NORMAL}"
 
-if [ -z "$terminal_text_color" ]; then
-    echo "Welcome! Choose your default text color mode:"
-    echo "1) Normal mode  (#FFFFFF - white)"
-    echo "2) Coder mode   (#00D000 - green)"
-    read -r -p "Enter choice [1-2]: " _mode_choice
-    case "$_mode_choice" in
-        2) terminal_text_color="00D000" ;;
-        *) terminal_text_color="FFFFFF" ;;
-    esac
-    save_settings 2>/dev/null || true
-fi
+# ─────────────────────────────────────────────────────────────────────────────
 
 _get_rc_file() {
     local current_shell
@@ -65,6 +57,7 @@ _hex_to_rgb() {
         "$((16#${hex:4:2}))"
 }
 
+# Works perfectly — do not touch
 apply_colors() {
     if [ -n "$terminal_bg_color" ] && _valid_hex "$terminal_bg_color"; then
         local hex
@@ -146,6 +139,8 @@ _remove_colors_from_rc() {
     mv "$tmp_file" "$rc_file"
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+
 settings_menu() {
     echo "Settings:"
     echo "1) Hidden file settings ($show_hidden_files)"
@@ -165,6 +160,8 @@ settings_menu() {
         *) echo "Invalid choice" ;;
     esac
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 hidden_file_settings() {
     echo
@@ -187,6 +184,8 @@ hidden_file_settings() {
         *) echo "Invalid choice" ;;
     esac
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 index_mode_threshold_settings() {
     echo
@@ -215,6 +214,8 @@ index_mode_threshold_settings() {
         *) echo "Invalid choice" ;;
     esac
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 terminal_bg_color_settings() {
     echo
@@ -247,6 +248,8 @@ terminal_bg_color_settings() {
     esac
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+
 terminal_text_color_settings() {
     echo
     echo "Terminal text color"
@@ -269,19 +272,27 @@ terminal_text_color_settings() {
             fi
             ;;
         2)
-            echo "Choose default text color:"
+            echo "Choose default:"
             echo "1) Normal mode (#FFFFFF - white)"
             echo "2) Coder mode  (#00D000 - green)"
             read -r -p "Enter choice [1-2]: " mode_choice
             case "$mode_choice" in
-                2) _apply_text_color "00D000"; echo "Text color restored to Coder mode (#00D000)" ;;
-                *) _apply_text_color "FFFFFF"; echo "Text color restored to Normal mode (#FFFFFF)" ;;
+                2)
+                    _apply_text_color "$DEFAULT_TERMINAL_TEXT_COLOR_CODER"
+                    echo "Text color restored to Coder mode (#${DEFAULT_TERMINAL_TEXT_COLOR_CODER})"
+                    ;;
+                *)
+                    _apply_text_color "$DEFAULT_TERMINAL_TEXT_COLOR_NORMAL"
+                    echo "Text color restored to Normal mode (#${DEFAULT_TERMINAL_TEXT_COLOR_NORMAL})"
+                    ;;
             esac
             ;;
         0) return ;;
         *) echo "Invalid choice" ;;
     esac
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 restore_all_defaults() {
     echo
@@ -293,17 +304,18 @@ restore_all_defaults() {
     show_hidden_files=$DEFAULT_SHOW_HIDDEN_FILES
     index_mode_threshold=$DEFAULT_INDEX_MODE_THRESHOLD
 
-    case "$mode_choice" in
-        2) terminal_text_color="00D000" ;;
-        *) terminal_text_color="FFFFFF" ;;
-    esac
-
     _apply_bg_color "$DEFAULT_TERMINAL_BG_COLOR"
-    _apply_text_color "$terminal_text_color"
+
+    case "$mode_choice" in
+        2) _apply_text_color "$DEFAULT_TERMINAL_TEXT_COLOR_CODER" ;;
+        *) _apply_text_color "$DEFAULT_TERMINAL_TEXT_COLOR_NORMAL" ;;
+    esac
 
     save_settings
     echo "All settings restored to defaults"
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 save_settings() {
     {
