@@ -7,7 +7,7 @@ mkdir -p "$CONFIG_DIR"
 
 DEFAULT_SHOW_HIDDEN_FILES=false
 DEFAULT_INDEX_MODE_THRESHOLD=200
-DEFAULT_TERMINAL_BG_COLOR=""
+DEFAULT_TERMINAL_BG_COLOR="000000"
 DEFAULT_TERMINAL_TEXT_COLOR=""
 
 unset show_hidden_files
@@ -20,7 +20,18 @@ unset terminal_text_color
 : "${show_hidden_files:=$DEFAULT_SHOW_HIDDEN_FILES}"
 : "${index_mode_threshold:=$DEFAULT_INDEX_MODE_THRESHOLD}"
 : "${terminal_bg_color:=$DEFAULT_TERMINAL_BG_COLOR}"
-: "${terminal_text_color:=$DEFAULT_TERMINAL_TEXT_COLOR}"
+
+if [ -z "$terminal_text_color" ]; then
+    echo "Welcome! Choose your default text color mode:"
+    echo "1) Normal mode  (#FFFFFF - white)"
+    echo "2) Coder mode   (#00D000 - green)"
+    read -r -p "Enter choice [1-2]: " _mode_choice
+    case "$_mode_choice" in
+        2) terminal_text_color="00D000" ;;
+        *) terminal_text_color="FFFFFF" ;;
+    esac
+    save_settings 2>/dev/null || true
+fi
 
 _get_rc_file() {
     local current_shell
@@ -70,10 +81,22 @@ apply_colors() {
     fi
 }
 
-reset_colors() {
-    printf "\e]11;?\a"
-    printf "\e]10;?\a"
-    printf "\e[2J\e[H"
+_apply_bg_color() {
+    local hex
+    hex="$(_normalize_hex "$1")"
+    terminal_bg_color="$hex"
+    save_settings
+    _persist_colors_to_rc
+    apply_colors
+}
+
+_apply_text_color() {
+    local hex
+    hex="$(_normalize_hex "$1")"
+    terminal_text_color="$hex"
+    save_settings
+    _persist_colors_to_rc
+    apply_colors
 }
 
 _persist_colors_to_rc() {
@@ -127,8 +150,8 @@ settings_menu() {
     echo "Settings:"
     echo "1) Hidden file settings ($show_hidden_files)"
     echo "2) Index mode threshold ($index_mode_threshold)"
-    echo "3) Terminal background color (${terminal_bg_color:-terminal default})"
-    echo "4) Terminal text color (${terminal_text_color:-terminal default})"
+    echo "3) Terminal background color (#${terminal_bg_color})"
+    echo "4) Terminal text color (#${terminal_text_color})"
     echo "5) Restore ALL settings to default"
 
     read -r -p "Enter choice [1-5]: " main_choice
@@ -196,27 +219,29 @@ index_mode_threshold_settings() {
 terminal_bg_color_settings() {
     echo
     echo "Terminal background color"
-    echo "Current: ${terminal_bg_color:-terminal default}"
+    echo "Current: #${terminal_bg_color}"
+    echo "Default: #${DEFAULT_TERMINAL_BG_COLOR}"
     echo
     echo "1) Set new color"
-    echo "2) Clear color"
-    echo "3) Restore default"
+    echo "2) Restore default (#${DEFAULT_TERMINAL_BG_COLOR})"
     echo "0) Back"
 
-    read -r -p "Enter choice [0-3]: " b_choice
+    read -r -p "Enter choice [0-2]: " b_choice
 
     case "$b_choice" in
         1)
-            read -r -p "Color: " input_color
+            read -r -p "Color (e.g. #1e1e2e or 1e1e2e): " input_color
             if _valid_hex "$input_color"; then
-                terminal_bg_color="$(_normalize_hex "$input_color")"
-                save_settings; _persist_colors_to_rc; apply_colors
+                _apply_bg_color "$input_color"
+                echo "Background set to #$(_normalize_hex "$input_color")"
             else
-                echo "Invalid hex"
+                echo "Invalid hex — must be 6 digits"
             fi
             ;;
-        2) terminal_bg_color="";                         save_settings; _persist_colors_to_rc; reset_colors; apply_colors ;;
-        3) terminal_bg_color=$DEFAULT_TERMINAL_BG_COLOR; save_settings; _persist_colors_to_rc; reset_colors; apply_colors ;;
+        2)
+            _apply_bg_color "$DEFAULT_TERMINAL_BG_COLOR"
+            echo "Background restored to default (#${DEFAULT_TERMINAL_BG_COLOR})"
+            ;;
         0) return ;;
         *) echo "Invalid choice" ;;
     esac
@@ -225,46 +250,59 @@ terminal_bg_color_settings() {
 terminal_text_color_settings() {
     echo
     echo "Terminal text color"
-    echo "Current: ${terminal_text_color:-terminal default}"
+    echo "Current: #${terminal_text_color}"
     echo
     echo "1) Set new color"
-    echo "2) Clear color"
-    echo "3) Restore default"
+    echo "2) Restore default"
     echo "0) Back"
 
-    read -r -p "Enter choice [0-3]: " c_choice
+    read -r -p "Enter choice [0-2]: " c_choice
 
     case "$c_choice" in
         1)
-            read -r -p "Color: " input_color
+            read -r -p "Color (e.g. #cdd6f4 or cdd6f4): " input_color
             if _valid_hex "$input_color"; then
-                terminal_text_color="$(_normalize_hex "$input_color")"
-                save_settings; _persist_colors_to_rc; apply_colors
+                _apply_text_color "$input_color"
+                echo "Text color set to #$(_normalize_hex "$input_color")"
             else
-                echo "Invalid hex"
+                echo "Invalid hex — must be 6 digits"
             fi
             ;;
-        2) terminal_text_color="";                           save_settings; _persist_colors_to_rc; reset_colors; apply_colors ;;
-        3) terminal_text_color=$DEFAULT_TERMINAL_TEXT_COLOR; save_settings; _persist_colors_to_rc; reset_colors; apply_colors ;;
+        2)
+            echo "Choose default text color:"
+            echo "1) Normal mode (#FFFFFF - white)"
+            echo "2) Coder mode  (#00D000 - green)"
+            read -r -p "Enter choice [1-2]: " mode_choice
+            case "$mode_choice" in
+                2) _apply_text_color "00D000"; echo "Text color restored to Coder mode (#00D000)" ;;
+                *) _apply_text_color "FFFFFF"; echo "Text color restored to Normal mode (#FFFFFF)" ;;
+            esac
+            ;;
         0) return ;;
         *) echo "Invalid choice" ;;
     esac
 }
 
 restore_all_defaults() {
-    read -r -p "Reset all settings? [y/N]: " confirm
+    echo
+    echo "Choose default text color mode:"
+    echo "1) Normal mode (#FFFFFF - white)"
+    echo "2) Coder mode  (#00D000 - green)"
+    read -r -p "Enter choice [1-2]: " mode_choice
 
-    case "$confirm" in
-        y|Y|yes|YES)
-            show_hidden_files=$DEFAULT_SHOW_HIDDEN_FILES
-            index_mode_threshold=$DEFAULT_INDEX_MODE_THRESHOLD
-            terminal_bg_color=$DEFAULT_TERMINAL_BG_COLOR
-            terminal_text_color=$DEFAULT_TERMINAL_TEXT_COLOR
-            save_settings
-            _remove_colors_from_rc
-            reset_colors
-            ;;
+    show_hidden_files=$DEFAULT_SHOW_HIDDEN_FILES
+    index_mode_threshold=$DEFAULT_INDEX_MODE_THRESHOLD
+
+    case "$mode_choice" in
+        2) terminal_text_color="00D000" ;;
+        *) terminal_text_color="FFFFFF" ;;
     esac
+
+    _apply_bg_color "$DEFAULT_TERMINAL_BG_COLOR"
+    _apply_text_color "$terminal_text_color"
+
+    save_settings
+    echo "All settings restored to defaults"
 }
 
 save_settings() {
