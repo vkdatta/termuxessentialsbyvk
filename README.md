@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/Platform-Termux%20%7C%20Android-3DDC84?style=for-the-badge&logo=android&logoColor=white"/>
+<img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20WSL-black?style=for-the-badge&logo=gnubash&logoColor=white"/>
 <img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?style=for-the-badge&logo=python&logoColor=white"/>
 <img src="https://img.shields.io/badge/Shell-Bash-4EAA25?style=for-the-badge&logo=gnu-bash&logoColor=white"/>
 <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge"/>
@@ -10,46 +10,47 @@
 
 # 🐚 bashbasicsbyvk
 
-### **A power-user shell toolkit for Termux — file management, web scraping, and cloud sync, all from a single keystroke.**
+### A lightweight, open-source collection of Bash-Python scripts made to optimize workflows and file management in shell environments.
 
 <br/>
 
-[📦 Install](#-installation) · [🚀 Usage](#-usage) · [⚙️ Setup Guide](#%EF%B8%8F-setup-guide) · [☁️ Cloud Sync](#%EF%B8%8F-rclone--google-drive-setup) · [🔄 Upgrade](#-upgrade)
+[Install](#-installation) &nbsp;·&nbsp; [Usage](#-usage) &nbsp;·&nbsp; [Prerequisites](#%EF%B8%8F-prerequisites) &nbsp;·&nbsp; [Storage Setup](#-storage-setup) &nbsp;·&nbsp; [Cloud Sync](#-rclone--google-drive-setup) &nbsp;·&nbsp; [Upgrade](#-upgrade)
 
 </div>
 
 ---
 
-## ✨ What's Inside
-
-| Command | Purpose |
-|---|---|
-| [`o`](#-o--the-omni-file-manager) | 🗂️ Omni file manager — browse, edit, share, move, delete, batch ops & more |
-| [`xtract`](#-xtract--web-scraper) | 🕷️ Scrape all HTML tables & hyperlinks from single or paginated URLs |
+bashbasicsbyvk offers comprehensive, high-performance file management with run, copy, erase, delete, overwrite, rename, move, batch-create and batch-delete, organise, and find functions via a simple interactive call — letting you do anything without confusion. The integrated `xtract` function automates extraction of HTML tables and links from single and multi-page sites, streamlining data harvesting from catalogues, reports, and dashboards.
 
 ---
 
-## 🗂️ `o` — The Omni File Manager
+## Commands
 
-> Launch with a single character. Do everything.
+| Command | Purpose |
+|---|---|
+| [`o`](#-o--omni-file-manager) | Omni file manager — run, copy, erase, delete, overwrite, rename, move, batch-create, batch-delete, organise, find |
+| [`xtract`](#-xtract--web-scraper) | 🕷️ Extract all HTML tables & hyperlinks from single or paginated URLs |
+
+---
+
+## 🐚 `o` — Omni File Manager
 
 ```bash
 o
 ```
 
-Drill into **any file or folder** from your shell and act on it instantly. No flags, no paths — just `o`.
+A single interactive call to manage everything in your shell. No flags, no paths.
 
 <details>
-<summary><strong>📋 Supported Operations</strong></summary>
+<summary><strong>Supported Operations</strong></summary>
 
 <br/>
 
 | Category | Operations |
 |---|---|
-| 📁 **Files** | View, Edit, Rename, Move, Delete, Share |
-| 🗃️ **Batch** | Multi-select Edit, Batch Delete, Bulk Create |
-| 🔍 **Search** | Find files by name, type, or content |
-| 🗄️ **Organise** | Sort, Group, Restructure directories |
+| **Files** | Run, Copy, Erase, Delete, Overwrite, Rename, Move |
+| **Batch** | Batch-create, Batch-delete |
+| **Navigate** | Find, Organise |
 
 </details>
 
@@ -57,101 +58,100 @@ Drill into **any file or folder** from your shell and act on it instantly. No fl
 
 ## 🕷️ `xtract` — Web Scraper
 
-> Harvest the web. One command.
-
 ```bash
 xtract
 ```
 
-Scrapes **all** HTML tables and hyperlinks from one or more paginated web pages in a single invocation. Perfect for harvesting catalogues, reports, or any tabular data spread across multiple pages.
+Extracts **all** HTML tables and hyperlinks from one or more paginated web pages in a single invocation. Perfect for harvesting catalogues, reports, and dashboards spread across multiple pages.
 
 <details>
-<summary><strong>📋 Usage Patterns</strong></summary>
+<summary><strong>URL Patterns & Examples</strong></summary>
 
 <br/>
 
-| Intent | Input Format | Example |
+| Intent | Format | Example |
 |---|---|---|
 | Single page | Plain URL | `example.com/article/p.html` |
-| Specific page number | URL with page number | `example.com/article/100` |
-| Range of pages | URL with `{N}` | `example.com/article/{100}` |
+| Specific page number | URL ending in page number | `example.com/article/100` |
+| Page range (1 to N) | URL with `{N}` | `example.com/article/{100}` |
 
-> 💡 **`{100}`** means pages **1 through 100**. Curly braces = range. No braces = exact page.
+> **Note:** `{100}` means pages **1 through 100**. Curly braces signal a range — no braces means that exact page only.
 
 </details>
 
 ---
 
-## ⚙️ Setup Guide
+## ⚙️ Prerequisites
 
-### Step 1 — Prerequisites
-
-Run the following blocks in order inside Termux:
+Run the following blocks in order:
 
 ```bash
-# Core packages
 pkg install termux-api
 pkg install python -y
 pkg install root-repo
 pkg uninstall tur-repo -y
-pkg update -y && pkg upgrade -y
+pkg update -y
+pkg upgrade -y
 pkg install tur-repo -y
 pkg install clang libopenblas libffi libzmq build-essential -y
 ```
-
 ```bash
-# Build tools
 pkg update
 pkg install clang make cmake pkg-config
-pkg install python-dev ninja libandroid-spawn libffi-dev rclone
+pkg install python-dev
+pkg install ninja
+pkg install libandroid-spawn
+pkg install libffi-dev
+pkg install rclone
 ```
-
 ```bash
-# Python dependencies
-pip install numpy pandas
-pip install requests beautifulsoup4 tqdm openpyxl
+pip install numpy
 ```
-
 ```bash
-# Final essentials
+pip install pandas
+```
+```bash
 pkg install -y termux-api python git curl
+```
+```bash
+pip install requests pandas beautifulsoup4 tqdm 
+```
+```bash
+pip install openpyxl 
 ```
 
 ---
 
-### Step 2 — Storage Access
+## 🐚 Storage Setup
 
-> **Required** so Termux can read/write your Android shared storage.
+Enable storage access in your shell environment:
 
 ```bash
 termux-setup-storage
 ```
 
-Grant the storage permission when prompted by Android. This creates symlinks under `~/storage/` (e.g. `~/storage/downloads`) and enables Termux to access `/storage/emulated/0/`.
+Grant the requested storage permission when prompted by Android. This creates symlinks in `~/storage/` for shared directories like Downloads and ensures Termux can read from `/storage/emulated/0/`.
 
-**Allow external app access** (needed for sharing files via Chrome, etc.):
+**Allow external app access** (required for sharing files to apps like Chrome):
 
 ```bash
 nano ~/.termux/termux.properties
 ```
 
-Find or add this line:
+Locate or add the line:
 
 ```
 allow-external-apps = true
 ```
 
-> Remove the leading `#` if the line exists but is commented out.
-
-Then fully restart Termux:
-> **Android Settings → Apps → Termux → Force Stop → Relaunch**
+Uncomment it if present by removing the `#`. Save and exit, then restart the Termux app completely — **Android Settings → Apps → Termux → Force Stop → Relaunch**. This enables the content provider (`com.termux.files`) to grant read access to URIs for external apps.
 
 ---
 
-## ☁️ Rclone + Google Drive Setup
+## 🕷️ Rclone + Google Drive Setup
 
 <details>
-<summary><strong>🖥️ Remote Shell (e.g. Google Cloud)</strong></summary>
+<summary><strong>Remote Shell (e.g. Google Cloud)</strong></summary>
 
 <br/>
 
@@ -161,8 +161,6 @@ curl -LO https://downloads.rclone.org/rclone-current-linux-amd64.zip
 unzip -j rclone-current-linux-amd64.zip "*/rclone" -d ~/bin/
 chmod 755 ~/bin/rclone
 rm rclone-current-linux-amd64.zip
-
-# Add to PATH if not already present
 if [[ ":$PATH:" != *":$HOME/bin:"* ]]; then
     echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
     source ~/.bashrc
@@ -172,7 +170,7 @@ fi
 </details>
 
 <details>
-<summary><strong>📱 Termux (Android)</strong></summary>
+<summary><strong>Local Shell</strong></summary>
 
 <br/>
 
@@ -194,7 +192,7 @@ Follow the interactive prompts:
 |---|---|---|
 | 1 | New remote? | `n` |
 | 2 | Name | `gdrive` |
-| 3 | Storage type | `Google Drive` |
+| 3 | Storage type | Google Drive |
 | 4 | Client ID / Secret | *(leave empty)* |
 | 5 | Scope | `1` — Full access |
 | 6 | Root folder ID | *(leave empty)* |
@@ -213,26 +211,33 @@ pip install git+https://github.com/vkdatta/bashbasicsbyvk.git
 
 ## 🔄 Upgrade
 
-> ⚠️ This is a living personal project — all changes go directly to `main`. If a command behaves unexpectedly, force-reinstall to get the latest version.
+> This is a living personal project — all changes go directly to `main`. No versioned releases. If a command behaves unexpectedly, force-reinstall to pull the latest state.
 
 ```bash
-pip install -vvv --progress-bar on --upgrade --force-reinstall \
-  git+https://github.com/vkdatta/bashbasicsbyvk.git
+pip install -vvv --progress-bar on --upgrade --force-reinstall git+https://github.com/vkdatta/bashbasicsbyvk.git
 ```
 
 ---
 
-## 🧭 Quick Reference
+## Usage
 
-| Command | Example | Description |
+| Command | Example | What It Does |
 |---|---|---|
 | `o` | `o` | Launch the omni file manager |
-| `xtract` | `xtract` | Launch the web scraper |
+| `xtract` | `xtract` | Scrape **all** HTML tables & links from the specified pages or ranges across one or more sites |
+
+> **🕷️ Tips for `xtract`**
+>
+> Enter `example.com/article/p.html` to extract tables/links from that URL only
+>
+> Enter `example.com/article/100` *(if the same URL has multiple pages)* to extract tables/links from the 100th page only
+>
+> Enter `example.com/article/{100}` *(if the same URL has multiple pages)* to extract tables/links from the 1st page to the 100th page — observe the curly brackets
 
 ---
 
 <div align="center">
 
-Made with 🖤 for the terminal. Built for **Termux power users**.
+🐚 &nbsp; Built for the shell. &nbsp; 🕷️
 
 </div>
