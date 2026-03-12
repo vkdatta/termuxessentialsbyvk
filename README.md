@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20WSL-black?style=for-the-badge&logo=gnubash&logoColor=white&borderRadius=50"/>
-<img src="https://img.shields.io/badge/Python-3.8%2B-black?style=for-the-badge&logo=python&logoColor=white&borderRadius=50"/>
-<img src="https://img.shields.io/badge/Shell-Bash-black?style=for-the-badge&logo=gnu-bash&logoColor=white&borderRadius=50"/>
-<img src="https://img.shields.io/badge/License-MIT-black?style=for-the-badge&logoColor=white&borderRadius=50"/>
-<img src="https://img.shields.io/badge/Install-pip-black?style=for-the-badge&logo=pypi&logoColor=white&borderRadius=50"/>
+<img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20WSL-?style=for-the-badge&logo=gnubash&logoColor=white&labelColor=%23272727&color=%23171717&borderRadius=50"/>
+<img src="https://img.shields.io/badge/Python-3.8%2B-?style=for-the-badge&logo=python&logoColor=white&labelColor=%23272727&color=%23171717&borderRadius=50"/>
+<img src="https://img.shields.io/badge/Shell-Bash-?style=for-the-badge&logo=gnu-bash&logoColor=white&labelColor=%23272727&color=%23171717&borderRadius=50"/>
+<img src="https://img.shields.io/badge/License-MIT-?style=for-the-badge&logoColor=white&labelColor=%23272727&color=%23171717&borderRadius=50"/>
+<img src="https://img.shields.io/badge/Install-pip-?style=for-the-badge&logo=pypi&logoColor=white&labelColor=%23272727&color=%23171717&borderRadius=50"/>
 
 <br/><br/>
 
