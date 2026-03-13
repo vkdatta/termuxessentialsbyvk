@@ -138,12 +138,19 @@ rclone config
 pip install git+https://github.com/vkdatta/bashbasicsbyvk.git
 ```
 
-This is a living personal project — all changes go directly to `main`. No versioned releases. If a command behaves unexpectedly, force-reinstall to pull the latest state:
+This is a personal project — all changes go directly to `main`. No versioned releases. If a command behaves unexpectedly, force-reinstall to pull the latest state:
 
 ```bash
 pip install -vvv --progress-bar on --upgrade --force-reinstall git+https://github.com/vkdatta/bashbasicsbyvk.git
 ```
+---
 
+---
+### Clone
+
+```bash
+git clone https://github.com/vkdatta/bashbasicsbyvk.git
+```
 ---
 
 ### Commands
