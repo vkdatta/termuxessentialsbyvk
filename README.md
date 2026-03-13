@@ -144,8 +144,6 @@ This is a personal project — all changes go directly to `main`. No versioned r
 pip install -vvv --progress-bar on --upgrade --force-reinstall git+https://github.com/vkdatta/bashbasicsbyvk.git
 ```
 ---
-
----
 ### Clone
 
 ```bash
