@@ -187,7 +187,9 @@ if $_ok; then
 echo "Choose copy target:"
 echo "1) Local (navigate)"
 echo "2) Google Drive via rclone"
-read -p "Enter choice [1-2]: " copy_choice
+echo "3) Local storage to gcloud"
+echo "4) gcloud to local storage"
+read -p "Enter choice [1-4]: " copy_choice
 case "$copy_choice" in
 1)
 original_path="$path"
@@ -206,6 +208,34 @@ for item in "${selected_items[@]}"; do
 local base=$(basename "$item")
 echo "📤 Copying $base → gdrive..."
 rclone copy "$item" "$remote_path/$base" --progress --metadata
+done
+selected_items=()
+;;
+3)
+if ! command -v gcloud >/dev/null 2>&1; then
+echo "❌ gcloud not found in PATH."
+selected_items=()
+return
+fi
+gcloud cloud-shell ssh --command "mkdir -p ~/bashbasicsbyvk_localstorage" >/dev/null 2>&1 || true
+for item in "${selected_items[@]}"; do
+local base=$(basename "$item")
+echo "📤 Copying $base → gCloud..."
+gcloud cloud-shell scp --recurse "$item" "cloudshell:~/bashbasicsbyvk_localstorage/"
+done
+selected_items=()
+;;
+4)
+if ! command -v gcloud >/dev/null 2>&1; then
+echo "❌ gcloud not found in PATH."
+selected_items=()
+return
+fi
+mkdir -p "$HOME/bashbasicsbyvk_gcloud"
+for item in "${selected_items[@]}"; do
+local base=$(basename "$item")
+echo "📥 Copying $base → Local gcloud folder..."
+gcloud cloud-shell scp --recurse "cloudshell:$item" "$HOME/bashbasicsbyvk_gcloud/"
 done
 selected_items=()
 ;;
