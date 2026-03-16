@@ -221,7 +221,7 @@ gcloud cloud-shell ssh --command "mkdir -p ~/bashbasicsbyvk_localstorage" >/dev/
 for item in "${selected_items[@]}"; do
 local base=$(basename "$item")
 echo "📤 Copying $base → gCloud..."
-gcloud cloud-shell scp --recurse "$item" "cloudshell:~/bashbasicsbyvk_localstorage/"
+gcloud cloud-shell scp --recurse "localhost:$item" "cloudshell:~/bashbasicsbyvk_localstorage/"
 done
 selected_items=()
 ;;
@@ -235,7 +235,7 @@ mkdir -p "$HOME/bashbasicsbyvk_gcloud"
 for item in "${selected_items[@]}"; do
 local base=$(basename "$item")
 echo "📥 Copying $base → Local gcloud folder..."
-gcloud cloud-shell scp --recurse "cloudshell:$item" "$HOME/bashbasicsbyvk_gcloud/"
+gcloud cloud-shell scp --recurse "cloudshell:$item" "localhost:$HOME/bashbasicsbyvk_gcloud/"
 done
 selected_items=()
 ;;
