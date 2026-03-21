@@ -231,19 +231,22 @@ mkdir -p /tmp/bashbasicsbyvk_gcloud
 for item in "${selected_items[@]}"; do
     if [ -e "$item" ]; then
         cp -r "$item" /tmp/bashbasicsbyvk_gcloud/ 2>/dev/null
-        size=$(stat -c%s "$item" 2>/dev/null)
+        size=$(wc -c < "$item" 2>/dev/null)
         echo "Downloaded: $(basename "$item") | Size: $size bytes"
     fi
 done
 
 cd /tmp
 zip -r bashbasicsbyvk_gcloud.zip bashbasicsbyvk_gcloud >/dev/null 2>&1
+mv /tmp/bashbasicsbyvk_gcloud.zip "$HOME/"
 
-mv /tmp/bashbasicsbyvk_gcloud.zip ~/
+if command -v cloudshell >/dev/null 2>&1; then
+    cloudshell download "$HOME/bashbasicsbyvk_gcloud.zip"
+else
+    echo "cloudshell command not found"
+fi
 
-cloudshell download ~/bashbasicsbyvk_gcloud.zip
-
-rm -rf /tmp/bashbasicsbyvk_gcloud ~/bashbasicsbyvk_gcloud.zip 2>/dev/null
+rm -rf /tmp/bashbasicsbyvk_gcloud "$HOME/bashbasicsbyvk_gcloud.zip" 2>/dev/null
 selected_items=()
 ;;
 *)
