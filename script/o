@@ -231,16 +231,19 @@ mkdir -p /tmp/bashbasicsbyvk_gcloud
 for item in "${selected_items[@]}"; do
     if [ -e "$item" ]; then
         cp -r "$item" /tmp/bashbasicsbyvk_gcloud/ 2>/dev/null
-        size=$(du -sh "$item" 2>/dev/null | awk '{print $1}')
-        echo "Downloaded: $(basename "$item") | Size: $size"
+        size=$(stat -c%s "$item" 2>/dev/null)
+        echo "Downloaded: $(basename "$item") | Size: $size bytes"
     fi
 done
 
 cd /tmp
 zip -r bashbasicsbyvk_gcloud.zip bashbasicsbyvk_gcloud >/dev/null 2>&1
-cloudshell download bashbasicsbyvk_gcloud.zip
 
-rm -rf /tmp/bashbasicsbyvk_gcloud /tmp/bashbasicsbyvk_gcloud.zip 2>/dev/null
+mv /tmp/bashbasicsbyvk_gcloud.zip ~/
+
+cloudshell download ~/bashbasicsbyvk_gcloud.zip
+
+rm -rf /tmp/bashbasicsbyvk_gcloud ~/bashbasicsbyvk_gcloud.zip 2>/dev/null
 selected_items=()
 ;;
 *)
