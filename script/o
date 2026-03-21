@@ -226,17 +226,21 @@ done
 selected_items=()
 ;;
 4)
-if ! command -v gcloud >/dev/null 2>&1; then
-echo "❌ gcloud not found in PATH."
-selected_items=()
-return
-fi
-mkdir -p "$HOME/bashbasicsbyvk_gcloud"
+mkdir -p /tmp/bashbasicsbyvk_gcloud
+
 for item in "${selected_items[@]}"; do
-local base=$(basename "$item")
-echo "📥 Copying $base → Local gcloud folder..."
-gcloud cloud-shell scp --recurse "cloudshell:$item" "localhost:$HOME/bashbasicsbyvk_gcloud/"
+    if [ -e "$item" ]; then
+        cp -r "$item" /tmp/bashbasicsbyvk_gcloud/ 2>/dev/null
+        size=$(du -sh "$item" 2>/dev/null | awk '{print $1}')
+        echo "Downloaded: $(basename "$item") | Size: $size"
+    fi
 done
+
+cd /tmp
+zip -r bashbasicsbyvk_gcloud.zip bashbasicsbyvk_gcloud >/dev/null 2>&1
+cloudshell download bashbasicsbyvk_gcloud.zip
+
+rm -rf /tmp/bashbasicsbyvk_gcloud /tmp/bashbasicsbyvk_gcloud.zip 2>/dev/null
 selected_items=()
 ;;
 *)
