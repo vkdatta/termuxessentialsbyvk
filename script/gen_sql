@@ -1,1 +1,116 @@
+#!/usr/bin/env python3
+import os
+import csv
 
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
+
+def format_value(val):
+    """Always treat as literal string. No NULL, no number detection."""
+    escaped = str(val).replace("'", "''")
+    return f"'{escaped}'"
+
+
+def read_file(filepath, ext):
+    if ext == ".csv":
+        with open(filepath, newline="", encoding="utf-8-sig") as f:
+            reader = csv.reader(f)
+            rows   = [r for r in reader if any(c.strip() for c in r)]
+        if not rows:
+            return None, None
+        headers = [h.strip() for h in rows[0]]
+        body    = rows[1:]
+        return headers, body
+    else:
+        if not HAS_PANDAS:
+            print("\n  ERROR: pandas + openpyxl required.  pip install pandas openpyxl\n")
+            return None, None
+        df = pd.read_excel(filepath, dtype=str, keep_default_na=False, na_values=[])
+        headers = list(df.columns)
+        body    = df.values.tolist()
+        return headers, body
+
+print("=" * 60)
+print("  CSV / EXCEL  →  SQL INSERT GENERATOR")
+print("=" * 60)
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+ALLOWED    = {".csv", ".xlsx", ".xls", ".xlsm"}
+
+while True:
+    filename = input("\nEnter file name (with extension): ").strip()
+    if not filename:
+        continue
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED:
+        print(f"  Only {', '.join(sorted(ALLOWED))} files are accepted.")
+        continue
+    filepath = os.path.join(script_dir, filename)
+    if not os.path.isfile(filepath):
+        print(f"  File not found: {filepath}")
+        continue
+    break
+
+print(f"\n  Reading '{filename}' ...")
+headers, body = read_file(filepath, ext)
+
+if headers is None:
+    print("  ERROR: Could not read file or file is empty. Exiting.")
+    exit()
+
+print(f"  Columns  : {len(headers)}")
+print(f"  Data rows: {len(body)}")
+print(f"  Headers  : {', '.join(headers)}")
+
+print("""
+Select INSERT type:
+  1 = INSERT INTO
+  2 = INSERT OR IGNORE INTO
+  3 = INSERT OR REPLACE INTO
+""")
+
+while True:
+    choice = input("Enter choice (1 / 2 / 3): ").strip()
+    if choice == "1":
+        insert_type = "INSERT INTO"
+        break
+    if choice == "2":
+        insert_type = "INSERT OR IGNORE INTO"
+        break
+    if choice == "3":
+        insert_type = "INSERT OR REPLACE INTO"
+        break
+    print("  Please enter 1, 2 or 3.")
+
+print(f"  --> Using: {insert_type}")
+
+while True:
+    table_name = input("\nEnter table name: ").strip()
+    if table_name:
+        break
+
+col_list  = ", ".join(headers)
+sql_lines = [
+    f"-- Generated from : {filename}",
+    f"-- Table          : {table_name}",
+    f"-- Insert type    : {insert_type}",
+    f"-- Total rows     : {len(body)}",
+    "",
+]
+
+for row in body:
+    padded = list(row) + [""] * (len(headers) - len(row))
+    values = ", ".join(format_value(v) for v in padded[:len(headers)])
+    sql_lines.append(f"{insert_type} {table_name} ({col_list}) VALUES ({values});")
+
+base     = os.path.splitext(filename)[0]
+out_name = f"{base}_{table_name}.sql"
+out_path = os.path.join(script_dir, out_name)
+
+with open(out_path, "w", encoding="utf-8") as f:
+    f.write("\n".join(sql_lines))
+
+print(f"\n  Done!  {len(body)} rows written → {out_name}\n")
